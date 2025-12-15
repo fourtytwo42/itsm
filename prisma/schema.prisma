@@ -44,37 +44,38 @@ enum EmailEncryption {
 }
 
 model User {
-  id            String    @id @default(uuid())
-  email         String    @unique
-  passwordHash  String
-  firstName     String?
-  lastName      String?
-  avatar        String?
-  isActive      Boolean   @default(true)
-  emailVerified Boolean   @default(false)
-  passwordResetToken String? @unique
+  id                   String    @id @default(uuid())
+  email                String    @unique
+  passwordHash         String
+  firstName            String?
+  lastName             String?
+  avatar               String?
+  isActive             Boolean   @default(true)
+  emailVerified        Boolean   @default(false)
+  passwordResetToken   String?   @unique
   passwordResetExpires DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  deletedAt     DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  deletedAt            DateTime?
 
-  roles         UserRole[]
-  ticketsRequested Ticket[] @relation("TicketRequester")
-  ticketsAssigned  Ticket[] @relation("TicketAssignee")
+  roles            UserRole[]
+  ticketsRequested Ticket[]        @relation("TicketRequester")
+  ticketsAssigned  Ticket[]        @relation("TicketAssignee")
   ticketComments   TicketComment[]
+  assignedAssets   Asset[]         @relation("AssetAssignee")
 
   @@index([email])
   @@index([isActive])
 }
 
 model Role {
-  id        String    @id @default(uuid())
-  name      RoleName  @unique
+  id          String   @id @default(uuid())
+  name        RoleName @unique
   description String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  users     UserRole[]
+  users UserRole[]
 
   @@index([name])
 }
@@ -85,8 +86,8 @@ model UserRole {
   roleId    String
   createdAt DateTime @default(now())
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   @@unique([userId, roleId])
   @@index([userId])
@@ -106,9 +107,10 @@ model Ticket {
   updatedAt    DateTime       @updatedAt
   closedAt     DateTime?
 
-  requester    User           @relation("TicketRequester", fields: [requesterId], references: [id], onDelete: Cascade)
-  assignee     User?          @relation("TicketAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-  comments     TicketComment[]
+  requester      User                  @relation("TicketRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  assignee       User?                 @relation("TicketAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  comments       TicketComment[]
+  assetRelations TicketAssetRelation[]
 
   @@index([ticketNumber])
   @@index([status])
@@ -124,25 +126,25 @@ model TicketComment {
   body      String
   createdAt DateTime @default(now())
 
-  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
   @@index([ticketId])
   @@index([authorId])
 }
 
 model EmailConfiguration {
-  id            String          @id @default(uuid())
-  providerName  String?
-  protocol      EmailProtocol
-  host          String
-  port          Int
-  username      String
-  password      String
-  encryption    EmailEncryption @default(SSL)
-  pollingIntervalMinutes Int    @default(5)
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  id                     String          @id @default(uuid())
+  providerName           String?
+  protocol               EmailProtocol
+  host                   String
+  port                   Int
+  username               String
+  password               String
+  encryption             EmailEncryption @default(SSL)
+  pollingIntervalMinutes Int             @default(5)
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
 
   @@index([protocol])
 }
@@ -153,20 +155,131 @@ enum ArticleStatus {
 }
 
 model KnowledgeBaseArticle {
-  id          String        @id @default(uuid())
-  slug        String        @unique
-  title       String
-  content     String
-  status      ArticleStatus @default(PUBLISHED)
-  tags        String[]
-  helpfulCount    Int       @default(0)
-  notHelpfulCount Int       @default(0)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  embedding   Unsupported("vector")?
+  id              String                 @id @default(uuid())
+  slug            String                 @unique
+  title           String
+  content         String
+  status          ArticleStatus          @default(PUBLISHED)
+  tags            String[]
+  helpfulCount    Int                    @default(0)
+  notHelpfulCount Int                    @default(0)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  embedding       Unsupported("vector")?
 
   @@index([status])
   @@index([tags])
   @@index([title])
 }
 
+enum AssetType {
+  HARDWARE
+  SOFTWARE
+  NETWORK_DEVICE
+  CLOUD_RESOURCE
+}
+
+enum AssetStatus {
+  ACTIVE
+  INACTIVE
+  RETIRED
+  MAINTENANCE
+}
+
+enum RelationshipType {
+  CONTAINS
+  DEPENDS_ON
+  CONNECTED_TO
+  LICENSED_FOR
+}
+
+enum TicketAssetRelationType {
+  AFFECTED_BY
+  CAUSED_BY
+  RELATED_TO
+}
+
+model Asset {
+  id           String      @id @default(uuid())
+  assetNumber  String      @unique
+  name         String
+  type         AssetType
+  category     String?
+  manufacturer String?
+  model        String?
+  serialNumber String?
+  status       AssetStatus @default(ACTIVE)
+
+  // Assignment
+  assignedToId String?
+  assignedAt   DateTime?
+
+  // Location
+  location String?
+  building String?
+  floor    String?
+  room     String?
+
+  // Purchase Info
+  purchaseDate   DateTime?
+  purchasePrice  Decimal?  @db.Decimal(10, 2)
+  warrantyExpiry DateTime?
+
+  // Custom Fields (JSON)
+  customFields Json?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  createdById String?
+
+  // Relations
+  assignedTo      User?                 @relation("AssetAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  relationships   AssetRelationship[]   @relation("SourceAsset")
+  relatedAssets   AssetRelationship[]   @relation("TargetAsset")
+  ticketRelations TicketAssetRelation[]
+
+  @@index([assetNumber])
+  @@index([type])
+  @@index([status])
+  @@index([assignedToId])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model AssetRelationship {
+  id               String           @id @default(uuid())
+  sourceAssetId    String
+  targetAssetId    String
+  relationshipType RelationshipType
+  description      String?          @db.Text
+
+  createdAt   DateTime @default(now())
+  createdById String?
+
+  // Relations
+  sourceAsset Asset @relation("SourceAsset", fields: [sourceAssetId], references: [id], onDelete: Cascade)
+  targetAsset Asset @relation("TargetAsset", fields: [targetAssetId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceAssetId, targetAssetId, relationshipType])
+  @@index([sourceAssetId])
+  @@index([targetAssetId])
+}
+
+model TicketAssetRelation {
+  id           String                  @id @default(uuid())
+  ticketId     String
+  assetId      String
+  relationType TicketAssetRelationType @default(AFFECTED_BY)
+
+  createdAt   DateTime @default(now())
+  createdById String?
+
+  // Relations
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  asset  Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([ticketId, assetId, relationType])
+  @@index([ticketId])
+  @@index([assetId])
+}

@@ -19,6 +19,7 @@ const customJestConfig = {
     '!app/**/layout.tsx',
     '!app/**/page.tsx',
     '!**/__tests__/e2e/**',
+    '!lib/websocket/server.ts', // WebSocket server requires integration tests
   ],
   testMatch: [
     '**/__tests__/**/*.test.{ts,tsx}',

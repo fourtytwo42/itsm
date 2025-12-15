@@ -58,13 +58,15 @@ model User {
   updatedAt            DateTime  @updatedAt
   deletedAt            DateTime?
 
-  roles            UserRole[]
-  ticketsRequested Ticket[]         @relation("TicketRequester")
-  ticketsAssigned  Ticket[]         @relation("TicketAssignee")
-  ticketComments   TicketComment[]
-  assignedAssets   Asset[]          @relation("AssetAssignee")
-  changeRequests   ChangeRequest[]  @relation("ChangeCreator")
-  changeApprovals  ChangeApproval[]
+  roles                  UserRole[]
+  ticketsRequested       Ticket[]              @relation("TicketRequester")
+  ticketsAssigned        Ticket[]              @relation("TicketAssignee")
+  ticketComments         TicketComment[]
+  assignedAssets         Asset[]               @relation("AssetAssignee")
+  changeRequests         ChangeRequest[]       @relation("ChangeCreator")
+  changeApprovals        ChangeApproval[]
+  notifications          Notification[]
+  notificationPreference NotificationPreference?
 
   @@index([email])
   @@index([isActive])
@@ -456,4 +458,66 @@ model EscalationRule {
 
   @@index([slaPolicyId])
   @@index([active])
+}
+
+enum NotificationType {
+  TICKET_CREATED
+  TICKET_UPDATED
+  TICKET_ASSIGNED
+  TICKET_COMMENT
+  CHANGE_REQUEST_CREATED
+  CHANGE_REQUEST_APPROVED
+  CHANGE_REQUEST_REJECTED
+  SLA_BREACHED
+  ESCALATION
+}
+
+enum NotificationStatus {
+  UNREAD
+  READ
+  ARCHIVED
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  type      NotificationType
+  title     String
+  message   String           @db.Text
+  status    NotificationStatus @default(UNREAD)
+  link      String? // URL to related resource
+  metadata  Json? // Additional data (e.g., ticketId, changeRequestId)
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([type])
+  @@index([createdAt])
+}
+
+model NotificationPreference {
+  id                    String   @id @default(uuid())
+  userId                 String   @unique
+  emailEnabled           Boolean  @default(true)
+  pushEnabled            Boolean  @default(true)
+  ticketCreated          Boolean  @default(true)
+  ticketUpdated          Boolean  @default(true)
+  ticketAssigned         Boolean  @default(true)
+  ticketComment          Boolean  @default(true)
+  changeRequestCreated   Boolean  @default(true)
+  changeRequestApproved  Boolean  @default(true)
+  changeRequestRejected  Boolean  @default(true)
+  slaBreached            Boolean  @default(true)
+  escalation             Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import ChatWidget from '@/components/ChatWidget'
+import NotificationCenter from '@/components/NotificationCenter'
 
 export const metadata: Metadata = {
   title: 'ITSM Helpdesk',
@@ -16,6 +17,7 @@ export default function RootLayout({
     <html lang="en">
       <body>
         {children}
+        <NotificationCenter />
         <ChatWidget />
       </body>
     </html>

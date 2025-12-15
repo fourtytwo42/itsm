@@ -177,6 +177,23 @@ async function main() {
 
   console.log('Tickets created:', tickets.count)
 
+  // Email configuration seed
+  await prisma.emailConfiguration.upsert({
+    where: { id: 'default-email-config' },
+    update: {},
+    create: {
+      id: 'default-email-config',
+      providerName: 'Demo Mail',
+      protocol: 'IMAP',
+      host: 'mail.example.com',
+      port: 993,
+      username: 'demo@example.com',
+      password: 'demo-password',
+      encryption: 'SSL',
+      pollingIntervalMinutes: 5,
+    },
+  })
+
   console.log('Seeding completed!')
 }
 

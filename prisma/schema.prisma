@@ -31,6 +31,18 @@ enum TicketPriority {
   CRITICAL
 }
 
+enum EmailProtocol {
+  IMAP
+  POP3
+  SMTP
+}
+
+enum EmailEncryption {
+  NONE
+  SSL
+  TLS
+}
+
 model User {
   id            String    @id @default(uuid())
   email         String    @unique
@@ -117,5 +129,21 @@ model TicketComment {
 
   @@index([ticketId])
   @@index([authorId])
+}
+
+model EmailConfiguration {
+  id            String          @id @default(uuid())
+  providerName  String?
+  protocol      EmailProtocol
+  host          String
+  port          Int
+  username      String
+  password      String
+  encryption    EmailEncryption @default(SSL)
+  pollingIntervalMinutes Int    @default(5)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([protocol])
 }
 

@@ -194,6 +194,33 @@ async function main() {
     },
   })
 
+  // Knowledge base articles
+  await prisma.knowledgeBaseArticle.createMany({
+    data: [
+      {
+        slug: 'vpn-connection-failing',
+        title: 'VPN connection failing',
+        content: 'Check your internet connection and ensure VPN credentials are correct.',
+        status: 'PUBLISHED',
+        tags: ['vpn', 'network', 'remote'],
+      },
+      {
+        slug: 'email-not-syncing',
+        title: 'Email not syncing on mobile',
+        content: 'Remove and re-add the account, ensure IMAP is enabled.',
+        status: 'PUBLISHED',
+        tags: ['email', 'mobile', 'sync'],
+      },
+      {
+        slug: 'laptop-boot-issue',
+        title: 'Laptop not booting',
+        content: 'Boot into safe mode, run disk check, and ensure BIOS settings are correct.',
+        status: 'PUBLISHED',
+        tags: ['laptop', 'boot', 'hardware'],
+      },
+    ],
+  })
+
   console.log('Seeding completed!')
 }
 

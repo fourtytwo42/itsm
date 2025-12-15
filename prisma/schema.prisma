@@ -67,6 +67,7 @@ model User {
   changeApprovals        ChangeApproval[]
   notifications          Notification[]
   notificationPreference NotificationPreference?
+  updatedSettings        SystemSetting[]
 
   @@index([email])
   @@index([isActive])
@@ -520,4 +521,60 @@ model NotificationPreference {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+enum SettingCategory {
+  AUTHENTICATION
+  EMAIL
+  FILE_UPLOAD
+  BRANDING
+  TICKET
+  SYSTEM
+}
+
+model SystemSetting {
+  id          String          @id @default(uuid())
+  key         String          @unique
+  category    SettingCategory
+  value       Json            // Flexible JSON value
+  description String?         @db.Text
+  updatedBy   String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  updatedByUser User? @relation(fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([category])
+  @@index([key])
+}
+
+model CustomField {
+  id            String   @id @default(uuid())
+  name          String
+  label         String
+  type          String   // "text", "number", "date", "select", "textarea", "checkbox"
+  required      Boolean  @default(false)
+  defaultValue  String?
+  options       Json?    // For select/checkbox types
+  entityType    String   // "ticket", "asset", "change", "user"
+  order         Int      @default(0)
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([entityType])
+  @@index([active])
+}
+
+model TicketType {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?  @db.Text
+  icon        String?  // Icon identifier
+  color       String?  // Hex color
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([active])
 }

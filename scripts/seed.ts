@@ -142,6 +142,41 @@ async function main() {
   console.log('- Agent:', agent.email)
   console.log('- User:', user.email)
 
+  // Create sample tickets
+  const tickets = await prisma.ticket.createMany({
+    data: [
+      {
+        ticketNumber: 'TKT-2025-0001',
+        subject: 'Laptop not booting',
+        description: 'The laptop hangs on boot screen.',
+        status: 'NEW',
+        priority: 'HIGH',
+        requesterId: user.id,
+        assigneeId: agent.id,
+      },
+      {
+        ticketNumber: 'TKT-2025-0002',
+        subject: 'VPN connection failing',
+        description: 'Cannot connect to corporate VPN from home.',
+        status: 'IN_PROGRESS',
+        priority: 'MEDIUM',
+        requesterId: user.id,
+        assigneeId: agent.id,
+      },
+      {
+        ticketNumber: 'TKT-2025-0003',
+        subject: 'Email not syncing on mobile',
+        description: 'Outlook app is not syncing emails.',
+        status: 'NEW',
+        priority: 'LOW',
+        requesterId: user.id,
+        assigneeId: manager.id,
+      },
+    ],
+  })
+
+  console.log('Tickets created:', tickets.count)
+
   console.log('Seeding completed!')
 }
 

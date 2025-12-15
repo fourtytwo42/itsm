@@ -17,6 +17,20 @@ enum RoleName {
   REQUESTER
 }
 
+enum TicketStatus {
+  NEW
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
 model User {
   id            String    @id @default(uuid())
   email         String    @unique
@@ -33,6 +47,9 @@ model User {
   deletedAt     DateTime?
 
   roles         UserRole[]
+  ticketsRequested Ticket[] @relation("TicketRequester")
+  ticketsAssigned  Ticket[] @relation("TicketAssignee")
+  ticketComments   TicketComment[]
 
   @@index([email])
   @@index([isActive])
@@ -62,5 +79,43 @@ model UserRole {
   @@unique([userId, roleId])
   @@index([userId])
   @@index([roleId])
+}
+
+model Ticket {
+  id           String         @id @default(uuid())
+  ticketNumber String         @unique
+  subject      String
+  description  String
+  status       TicketStatus   @default(NEW)
+  priority     TicketPriority @default(MEDIUM)
+  requesterId  String
+  assigneeId   String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  closedAt     DateTime?
+
+  requester    User           @relation("TicketRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  assignee     User?          @relation("TicketAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  comments     TicketComment[]
+
+  @@index([ticketNumber])
+  @@index([status])
+  @@index([priority])
+  @@index([requesterId])
+  @@index([assigneeId])
+}
+
+model TicketComment {
+  id        String   @id @default(uuid())
+  ticketId  String
+  authorId  String
+  body      String
+  createdAt DateTime @default(now())
+
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+  @@index([authorId])
 }
 

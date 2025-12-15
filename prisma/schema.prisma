@@ -114,12 +114,16 @@ model Ticket {
   comments       TicketComment[]
   assetRelations TicketAssetRelation[]
   relatedChanges ChangeRequest[]
+  slaPolicy      SLAPolicy?            @relation(fields: [slaPolicyId], references: [id], onDelete: SetNull)
+  slaPolicyId    String?
+  slaTracking    SLATracking?
 
   @@index([ticketNumber])
   @@index([status])
   @@index([priority])
   @@index([requesterId])
   @@index([assigneeId])
+  @@index([slaPolicyId])
 }
 
 model TicketComment {
@@ -384,4 +388,72 @@ model ChangeApproval {
   @@index([changeRequestId])
   @@index([approverId])
   @@index([status])
+}
+
+model SLAPolicy {
+  id                String         @id @default(uuid())
+  name              String
+  description       String?        @db.Text
+  priority          TicketPriority
+  firstResponseTime Int // Minutes
+  resolutionTime    Int // Minutes
+  businessHours     Json? // Business hours definition
+  active            Boolean        @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  tickets         Ticket[]
+  tracking        SLATracking[]
+  escalationRules EscalationRule[]
+
+  @@index([priority])
+  @@index([active])
+}
+
+model SLATracking {
+  id                    String    @id @default(uuid())
+  ticketId              String    @unique
+  slaPolicyId           String
+  firstResponseTarget   DateTime?
+  firstResponseActual   DateTime?
+  firstResponseBreached Boolean   @default(false)
+  resolutionTarget      DateTime?
+  resolutionActual      DateTime?
+  resolutionBreached    Boolean   @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  ticket    Ticket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  slaPolicy SLAPolicy @relation(fields: [slaPolicyId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+  @@index([slaPolicyId])
+  @@index([firstResponseBreached])
+  @@index([resolutionBreached])
+}
+
+model EscalationRule {
+  id               String          @id @default(uuid())
+  slaPolicyId      String
+  name             String
+  description      String?         @db.Text
+  triggerCondition String // "FIRST_RESPONSE_BREACHED", "RESOLUTION_BREACHED", "NO_RESPONSE", "NO_ASSIGNEE"
+  triggerTime      Int? // Minutes (for time-based triggers)
+  action           String // "ASSIGN_TO_MANAGER", "INCREASE_PRIORITY", "NOTIFY_STAKEHOLDERS", "CREATE_CHANGE"
+  targetUserId     String? // For assign actions
+  newPriority      TicketPriority? // For priority increase
+  active           Boolean         @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  slaPolicy SLAPolicy @relation(fields: [slaPolicyId], references: [id], onDelete: Cascade)
+
+  @@index([slaPolicyId])
+  @@index([active])
 }

@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/prisma'
+import prisma from '@/lib/prisma'
 import { TicketStatus, TicketPriority } from '@prisma/client'
 import { wsServer } from '@/lib/websocket/server'
 import {

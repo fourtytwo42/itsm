@@ -2,6 +2,9 @@
   "name": "itsm-helpdesk",
   "version": "0.1.0",
   "private": true,
+  "prisma": {
+    "seed": "tsx scripts/reset-db.ts"
+  },
   "scripts": {
     "dev": "tsx server.ts",
     "build": "next build",
@@ -11,6 +14,7 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:e2e": "playwright test",
+    "reset-db": "tsx scripts/reset-db.ts",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:seed": "tsx scripts/seed.ts",
@@ -21,7 +25,8 @@
   "dependencies": {
     "@heroicons/react": "2.1.1",
     "@hookform/resolvers": "3.3.4",
-    "@prisma/client": "7.0.0",
+    "@prisma/adapter-pg": "^7.1.0",
+    "@prisma/client": "^6.0.0",
     "bcryptjs": "2.4.3",
     "csv-parse": "5.5.3",
     "csv-writer": "1.6.0",
@@ -34,7 +39,8 @@
     "nodemailer": "6.9.8",
     "openai": "4.24.1",
     "pdf-lib": "1.17.1",
-    "prisma": "7.0.0",
+    "pg": "^8.16.3",
+    "prisma": "^6.0.0",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "react-hook-form": "7.49.3",
@@ -54,6 +60,7 @@
     "@types/jsonwebtoken": "9.0.5",
     "@types/node": "20.11.5",
     "@types/nodemailer": "6.4.14",
+    "@types/pg": "^8.16.0",
     "@types/react": "19.0.1",
     "@types/react-dom": "19.0.0",
     "@types/ws": "8.5.10",

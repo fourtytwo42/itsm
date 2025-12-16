@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAuthContext } from '@/lib/middleware/auth'
 import { markAsRead, deleteNotification } from '@/lib/services/notification-service'
 
-export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const authContext = await getAuthContext(req)
     if (!authContext) {
@@ -12,7 +12,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
     const body = await req.json()
     if (body.action === 'read') {
-      const success = await markAsRead(params.id, user.id)
+      const { id } = await params
+      const success = await markAsRead(id, user.id)
       if (!success) {
         return NextResponse.json({ success: false, error: 'Notification not found' }, { status: 404 })
       }
@@ -29,7 +30,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   }
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const authContext = await getAuthContext(req)
     if (!authContext) {
@@ -37,7 +38,8 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     }
     const { user } = authContext
 
-    const success = await deleteNotification(params.id, user.id)
+    const { id } = await params
+    const success = await deleteNotification(id, user.id)
     if (!success) {
       return NextResponse.json({ success: false, error: 'Notification not found' }, { status: 404 })
     }

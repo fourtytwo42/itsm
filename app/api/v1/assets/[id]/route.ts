@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth } from '@/lib/middleware/auth'
+import { getAuthContext, requireAuth } from '@/lib/middleware/auth'
 import {
   getAssetById,
   updateAsset,
@@ -29,18 +29,14 @@ const updateAssetSchema = z.object({
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authContext = await requireAuth(request)
-    if (!authContext) {
-      return NextResponse.json(
-        { success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } },
-        { status: 401 }
-      )
-    }
+    const authContext = await getAuthContext(request)
+    requireAuth(authContext)
 
-    const asset = await getAssetById(params.id)
+    const { id } = await params
+    const asset = await getAssetById(id)
 
     if (!asset) {
       return NextResponse.json(
@@ -78,20 +74,15 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authContext = await requireAuth(request)
-    if (!authContext) {
-      return NextResponse.json(
-        { success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } },
-        { status: 401 }
-      )
-    }
+    const authContext = await getAuthContext(request)
+    requireAuth(authContext)
 
     // Check if user has Agent or higher role
     const hasAgentRole = authContext.user.roles.some(
-      (r) => r.role.name === 'AGENT' || r.role.name === 'IT_MANAGER' || r.role.name === 'ADMIN'
+      (r) => r === 'AGENT' || r === 'IT_MANAGER' || r === 'ADMIN'
     )
 
     if (!hasAgentRole) {
@@ -104,11 +95,12 @@ export async function PUT(
     const body = await request.json()
     const validatedData = updateAssetSchema.parse(body)
 
-    const asset = await updateAsset(params.id, {
+    const { id } = await params
+    const asset = await updateAsset(id, {
       ...validatedData,
       purchaseDate: validatedData.purchaseDate ? new Date(validatedData.purchaseDate) : undefined,
       warrantyExpiry: validatedData.warrantyExpiry ? new Date(validatedData.warrantyExpiry) : undefined,
-      assignedToId: validatedData.assignedToId === null ? null : validatedData.assignedToId,
+      assignedToId: validatedData.assignedToId === null ? undefined : validatedData.assignedToId,
     })
 
     return NextResponse.json(
@@ -148,20 +140,15 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authContext = await requireAuth(request)
-    if (!authContext) {
-      return NextResponse.json(
-        { success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } },
-        { status: 401 }
-      )
-    }
+    const authContext = await getAuthContext(request)
+    requireAuth(authContext)
 
     // Check if user has Agent or higher role
     const hasAgentRole = authContext.user.roles.some(
-      (r) => r.role.name === 'AGENT' || r.role.name === 'IT_MANAGER' || r.role.name === 'ADMIN'
+      (r) => r === 'AGENT' || r === 'IT_MANAGER' || r === 'ADMIN'
     )
 
     if (!hasAgentRole) {
@@ -171,7 +158,8 @@ export async function DELETE(
       )
     }
 
-    await deleteAsset(params.id)
+    const { id } = await params
+    await deleteAsset(id)
 
     return NextResponse.json(
       {

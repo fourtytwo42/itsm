@@ -7,6 +7,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 enum RoleName {
@@ -59,11 +60,11 @@ model User {
   deletedAt            DateTime?
 
   roles                  UserRole[]
-  ticketsRequested       Ticket[]              @relation("TicketRequester")
-  ticketsAssigned        Ticket[]              @relation("TicketAssignee")
+  ticketsRequested       Ticket[]                @relation("TicketRequester")
+  ticketsAssigned        Ticket[]                @relation("TicketAssignee")
   ticketComments         TicketComment[]
-  assignedAssets         Asset[]               @relation("AssetAssignee")
-  changeRequests         ChangeRequest[]       @relation("ChangeCreator")
+  assignedAssets         Asset[]                 @relation("AssetAssignee")
+  changeRequests         ChangeRequest[]         @relation("ChangeCreator")
   changeApprovals        ChangeApproval[]
   notifications          Notification[]
   notificationPreference NotificationPreference?
@@ -480,16 +481,16 @@ enum NotificationStatus {
 }
 
 model Notification {
-  id        String           @id @default(uuid())
+  id        String             @id @default(uuid())
   userId    String
   type      NotificationType
   title     String
-  message   String           @db.Text
+  message   String             @db.Text
   status    NotificationStatus @default(UNREAD)
   link      String? // URL to related resource
   metadata  Json? // Additional data (e.g., ticketId, changeRequestId)
   readAt    DateTime?
-  createdAt DateTime         @default(now())
+  createdAt DateTime           @default(now())
 
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -502,20 +503,20 @@ model Notification {
 
 model NotificationPreference {
   id                    String   @id @default(uuid())
-  userId                 String   @unique
-  emailEnabled           Boolean  @default(true)
-  pushEnabled            Boolean  @default(true)
-  ticketCreated          Boolean  @default(true)
-  ticketUpdated          Boolean  @default(true)
-  ticketAssigned         Boolean  @default(true)
-  ticketComment          Boolean  @default(true)
-  changeRequestCreated   Boolean  @default(true)
-  changeRequestApproved  Boolean  @default(true)
-  changeRequestRejected  Boolean  @default(true)
-  slaBreached            Boolean  @default(true)
-  escalation             Boolean  @default(true)
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  userId                String   @unique
+  emailEnabled          Boolean  @default(true)
+  pushEnabled           Boolean  @default(true)
+  ticketCreated         Boolean  @default(true)
+  ticketUpdated         Boolean  @default(true)
+  ticketAssigned        Boolean  @default(true)
+  ticketComment         Boolean  @default(true)
+  changeRequestCreated  Boolean  @default(true)
+  changeRequestApproved Boolean  @default(true)
+  changeRequestRejected Boolean  @default(true)
+  slaBreached           Boolean  @default(true)
+  escalation            Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -536,7 +537,7 @@ model SystemSetting {
   id          String          @id @default(uuid())
   key         String          @unique
   category    SettingCategory
-  value       Json            // Flexible JSON value
+  value       Json // Flexible JSON value
   description String?         @db.Text
   updatedBy   String?
   createdAt   DateTime        @default(now())
@@ -549,18 +550,18 @@ model SystemSetting {
 }
 
 model CustomField {
-  id            String   @id @default(uuid())
-  name          String
-  label         String
-  type          String   // "text", "number", "date", "select", "textarea", "checkbox"
-  required      Boolean  @default(false)
-  defaultValue  String?
-  options       Json?    // For select/checkbox types
-  entityType    String   // "ticket", "asset", "change", "user"
-  order         Int      @default(0)
-  active        Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id           String   @id @default(uuid())
+  name         String
+  label        String
+  type         String // "text", "number", "date", "select", "textarea", "checkbox"
+  required     Boolean  @default(false)
+  defaultValue String?
+  options      Json? // For select/checkbox types
+  entityType   String // "ticket", "asset", "change", "user"
+  order        Int      @default(0)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@index([entityType])
   @@index([active])
@@ -570,8 +571,8 @@ model TicketType {
   id          String   @id @default(uuid())
   name        String   @unique
   description String?  @db.Text
-  icon        String?  // Icon identifier
-  color       String?  // Hex color
+  icon        String? // Icon identifier
+  color       String? // Hex color
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

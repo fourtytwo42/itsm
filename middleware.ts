@@ -20,19 +20,20 @@ export function middleware(request: NextRequest) {
   const isProtectedRoute = protectedRoutes.some((route) => pathname.startsWith(route))
 
   if (isProtectedRoute) {
+    // For page routes (not API), allow through - client-side will handle auth
+    // The pages themselves will check for tokens in localStorage
+    if (!pathname.startsWith('/api/')) {
+      return NextResponse.next()
+    }
+
+    // For API routes, check Authorization header
     const authHeader = request.headers.get('authorization')
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      // For API routes, return 401
-      if (pathname.startsWith('/api/')) {
-        return NextResponse.json(
-          { success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } },
-          { status: 401 }
-        )
-      }
-
-      // For page routes, redirect to login
-      return NextResponse.redirect(new URL('/login', request.url))
+      return NextResponse.json(
+        { success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } },
+        { status: 401 }
+      )
     }
 
     try {
@@ -40,15 +41,10 @@ export function middleware(request: NextRequest) {
       verifyToken(token)
       return NextResponse.next()
     } catch (error) {
-      // Invalid token
-      if (pathname.startsWith('/api/')) {
-        return NextResponse.json(
-          { success: false, error: { code: 'UNAUTHORIZED', message: 'Invalid or expired token' } },
-          { status: 401 }
-        )
-      }
-
-      return NextResponse.redirect(new URL('/login', request.url))
+      return NextResponse.json(
+        { success: false, error: { code: 'UNAUTHORIZED', message: 'Invalid or expired token' } },
+        { status: 401 }
+      )
     }
   }
 

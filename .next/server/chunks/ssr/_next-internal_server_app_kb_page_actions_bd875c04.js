@@ -1,0 +1,3 @@
+module.exports=[22460,(a,b,c)=>{}];
+
+//# sourceMappingURL=_next-internal_server_app_kb_page_actions_bd875c04.js.map

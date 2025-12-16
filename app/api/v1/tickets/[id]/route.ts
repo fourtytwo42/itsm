@@ -20,9 +20,9 @@ const commentSchema = z.object({
   body: z.string().min(1),
 })
 
-export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = idSchema.parse(params)
+    const { id } = idSchema.parse(await params)
     const ticket = await getTicketById(id)
     if (!ticket) {
       return NextResponse.json({ success: false, error: { code: 'NOT_FOUND', message: 'Ticket not found' } }, { status: 404 })
@@ -42,12 +42,12 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
   }
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const auth = await getAuthContext(request)
     requireAuth(auth)
 
-    const { id } = idSchema.parse(params)
+    const { id } = idSchema.parse(await params)
     const body = await request.json()
     const validated = updateSchema.parse(body)
 
@@ -73,12 +73,12 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   }
 }
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const auth = await getAuthContext(request)
     requireAuth(auth)
 
-    const { id } = idSchema.parse(params)
+    const { id } = idSchema.parse(await params)
     const body = await request.json()
     const validated = commentSchema.parse(body)
 

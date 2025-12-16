@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs'
-import { prisma } from './prisma'
+import prisma from './prisma'
 import { signToken, signRefreshToken, type TokenPayload } from './jwt'
 import { RoleName } from '@prisma/client'
 

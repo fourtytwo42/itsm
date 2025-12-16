@@ -1,20 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth } from '@/lib/middleware/auth'
+import { getAuthContext, requireAuth } from '@/lib/middleware/auth'
 import { getAgentPerformance } from '@/lib/services/analytics-service'
 
 export async function GET(request: NextRequest) {
   try {
-    const authContext = await requireAuth(request)
-    if (!authContext) {
-      return NextResponse.json(
-        { success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } },
-        { status: 401 }
-      )
-    }
+    const authContext = await getAuthContext(request)
+    requireAuth(authContext)
 
     // Check if user has IT Manager or Admin role
     const hasManagerRole = authContext.user.roles.some(
-      (r) => r.role.name === 'IT_MANAGER' || r.role.name === 'ADMIN'
+      (r) => r === 'IT_MANAGER' || r === 'ADMIN'
     )
 
     if (!hasManagerRole) {

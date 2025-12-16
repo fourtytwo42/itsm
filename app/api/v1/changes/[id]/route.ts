@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth } from '@/lib/middleware/auth'
+import { getAuthContext, requireAuth } from '@/lib/middleware/auth'
 import {
   getChangeRequestById,
   updateChangeRequest,
@@ -25,18 +25,14 @@ const updateChangeRequestSchema = z.object({
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authContext = await requireAuth(request)
-    if (!authContext) {
-      return NextResponse.json(
-        { success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } },
-        { status: 401 }
-      )
-    }
+    const authContext = await getAuthContext(request)
+    requireAuth(authContext)
 
-    const changeRequest = await getChangeRequestById(params.id)
+    const { id } = await params
+    const changeRequest = await getChangeRequestById(id)
 
     if (!changeRequest) {
       return NextResponse.json(
@@ -74,20 +70,15 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authContext = await requireAuth(request)
-    if (!authContext) {
-      return NextResponse.json(
-        { success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } },
-        { status: 401 }
-      )
-    }
+    const authContext = await getAuthContext(request)
+    requireAuth(authContext)
 
     // Check if user has Agent or higher role
     const hasAgentRole = authContext.user.roles.some(
-      (r) => r.role.name === 'AGENT' || r.role.name === 'IT_MANAGER' || r.role.name === 'ADMIN'
+      (r) => r === 'AGENT' || r === 'IT_MANAGER' || r === 'ADMIN'
     )
 
     if (!hasAgentRole) {
@@ -100,13 +91,14 @@ export async function PUT(
     const body = await request.json()
     const validatedData = updateChangeRequestSchema.parse(body)
 
-    const changeRequest = await updateChangeRequest(params.id, {
+    const { id } = await params
+    const changeRequest = await updateChangeRequest(id, {
       ...validatedData,
       plannedStartDate: validatedData.plannedStartDate ? new Date(validatedData.plannedStartDate) : undefined,
       plannedEndDate: validatedData.plannedEndDate ? new Date(validatedData.plannedEndDate) : undefined,
       actualStartDate: validatedData.actualStartDate ? new Date(validatedData.actualStartDate) : undefined,
       actualEndDate: validatedData.actualEndDate ? new Date(validatedData.actualEndDate) : undefined,
-      relatedTicketId: validatedData.relatedTicketId === null ? null : validatedData.relatedTicketId,
+      relatedTicketId: validatedData.relatedTicketId === null ? undefined : validatedData.relatedTicketId,
     })
 
     return NextResponse.json(
@@ -146,20 +138,15 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authContext = await requireAuth(request)
-    if (!authContext) {
-      return NextResponse.json(
-        { success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } },
-        { status: 401 }
-      )
-    }
+    const authContext = await getAuthContext(request)
+    requireAuth(authContext)
 
     // Check if user has Agent or higher role
     const hasAgentRole = authContext.user.roles.some(
-      (r) => r.role.name === 'AGENT' || r.role.name === 'IT_MANAGER' || r.role.name === 'ADMIN'
+      (r) => r === 'AGENT' || r === 'IT_MANAGER' || r === 'ADMIN'
     )
 
     if (!hasAgentRole) {
@@ -169,7 +156,8 @@ export async function DELETE(
       )
     }
 
-    await deleteChangeRequest(params.id)
+    const { id } = await params
+    await deleteChangeRequest(id)
 
     return NextResponse.json(
       {

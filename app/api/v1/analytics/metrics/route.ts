@@ -1,17 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth } from '@/lib/middleware/auth'
+import { getAuthContext, requireAuth } from '@/lib/middleware/auth'
 import { getDashboardMetrics } from '@/lib/services/analytics-service'
 import { TicketPriority, TicketStatus } from '@prisma/client'
 
 export async function GET(request: NextRequest) {
   try {
-    const authContext = await requireAuth(request)
-    if (!authContext) {
-      return NextResponse.json(
-        { success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } },
-        { status: 401 }
-      )
-    }
+    const authContext = await getAuthContext(request)
+    requireAuth(authContext)
 
     const searchParams = request.nextUrl.searchParams
     const startDate = searchParams.get('startDate')

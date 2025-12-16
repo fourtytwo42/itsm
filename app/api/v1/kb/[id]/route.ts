@@ -15,9 +15,9 @@ const updateSchema = z.object({
   status: z.nativeEnum(ArticleStatus).optional(),
 })
 
-export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = idSchema.parse(params)
+    const { id } = idSchema.parse(await params)
     const article = await getArticleById(id)
     if (!article) {
       return NextResponse.json({ success: false, error: { code: 'NOT_FOUND', message: 'Article not found' } }, { status: 404 })
@@ -37,13 +37,13 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
   }
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const auth = await getAuthContext(request)
     requireAuth(auth)
     requireRole(auth, 'ADMIN')
 
-    const { id } = idSchema.parse(params)
+    const { id } = idSchema.parse(await params)
     const body = await request.json()
     const validated = updateSchema.parse(body)
 

@@ -32,23 +32,47 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       })
 
-      const data = await response.json()
+      let data
+      try {
+        data = await response.json()
+      } catch (parseError) {
+        setError('Invalid response from server')
+        setLoading(false)
+        return
+      }
 
-      if (!data.success) {
-        setError(data.error?.message || 'Login failed')
+      if (!response.ok || !data.success) {
+        setError(data.error?.message || `Login failed: ${response.statusText || 'Unknown error'}`)
+        setLoading(false)
+        return
+      }
+
+      // Validate response structure
+      if (!data.data?.accessToken || !data.data?.refreshToken || !data.data?.user) {
+        setError('Invalid response structure from server')
         setLoading(false)
         return
       }
 
       // Store tokens
-      localStorage.setItem('accessToken', data.data.accessToken)
-      localStorage.setItem('refreshToken', data.data.refreshToken)
-      localStorage.setItem('user', JSON.stringify(data.data.user))
+      try {
+        localStorage.setItem('accessToken', data.data.accessToken)
+        localStorage.setItem('refreshToken', data.data.refreshToken)
+        localStorage.setItem('user', JSON.stringify(data.data.user))
+      } catch (storageError) {
+        setError('Failed to save login credentials')
+        setLoading(false)
+        return
+      }
 
-      // Redirect to dashboard
-      router.push('/dashboard')
-    } catch (err) {
-      setError('An unexpected error occurred')
+      // Reset loading state before redirect
+      setLoading(false)
+      
+      // Use window.location for full page reload to ensure middleware doesn't block
+      window.location.href = '/dashboard'
+    } catch (err: any) {
+      console.error('Login error:', err)
+      setError(err.message || 'An unexpected error occurred. Please try again.')
       setLoading(false)
     }
   }

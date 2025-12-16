@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/prisma'
+import prisma from '@/lib/prisma'
 import { TicketPriority, TicketStatus } from '@prisma/client'
 
 export interface CreateSLAPolicyInput {

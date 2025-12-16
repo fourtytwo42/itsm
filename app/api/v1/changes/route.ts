@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth } from '@/lib/middleware/auth'
+import { getAuthContext, requireAuth } from '@/lib/middleware/auth'
 import {
   listChangeRequests,
   createChangeRequest,
@@ -20,13 +20,8 @@ const createChangeRequestSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    const authContext = await requireAuth(request)
-    if (!authContext) {
-      return NextResponse.json(
-        { success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } },
-        { status: 401 }
-      )
-    }
+    const authContext = await getAuthContext(request)
+    requireAuth(authContext)
 
     const searchParams = request.nextUrl.searchParams
     const type = searchParams.get('type') as ChangeType | null
@@ -76,17 +71,12 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const authContext = await requireAuth(request)
-    if (!authContext) {
-      return NextResponse.json(
-        { success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } },
-        { status: 401 }
-      )
-    }
+    const authContext = await getAuthContext(request)
+    requireAuth(authContext)
 
     // Check if user has Agent or higher role
     const hasAgentRole = authContext.user.roles.some(
-      (r) => r.role.name === 'AGENT' || r.role.name === 'IT_MANAGER' || r.role.name === 'ADMIN'
+      (r) => r === 'AGENT' || r === 'IT_MANAGER' || r === 'ADMIN'
     )
 
     if (!hasAgentRole) {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth } from '@/lib/middleware/auth'
+import { getAuthContext, requireAuth } from '@/lib/middleware/auth'
 import { approveChange, createApproval } from '@/lib/services/change-service'
 import { z } from 'zod'
 
@@ -18,20 +18,15 @@ const createApprovalSchema = z.object({
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authContext = await requireAuth(request)
-    if (!authContext) {
-      return NextResponse.json(
-        { success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } },
-        { status: 401 }
-      )
-    }
+    const authContext = await getAuthContext(request)
+    requireAuth(authContext)
 
     // Check if user has IT Manager or Admin role for approvals
     const hasManagerRole = authContext.user.roles.some(
-      (r) => r.role.name === 'IT_MANAGER' || r.role.name === 'ADMIN'
+      (r) => r === 'IT_MANAGER' || r === 'ADMIN'
     )
 
     if (!hasManagerRole) {
@@ -41,6 +36,7 @@ export async function POST(
       )
     }
 
+    const { id } = await params
     const body = await request.json()
     const searchParams = request.nextUrl.searchParams
     const action = searchParams.get('action') || 'approve'
@@ -48,7 +44,7 @@ export async function POST(
     if (action === 'create') {
       const validatedData = createApprovalSchema.parse(body)
       const approval = await createApproval({
-        changeRequestId: params.id,
+        changeRequestId: id,
         ...validatedData,
       })
 
@@ -62,7 +58,7 @@ export async function POST(
     } else {
       const validatedData = approveChangeSchema.parse(body)
       const approval = await approveChange({
-        changeRequestId: params.id,
+        changeRequestId: id,
         ...validatedData,
       })
 

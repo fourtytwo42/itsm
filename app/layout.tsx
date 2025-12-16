@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import Navigation from '@/components/Navigation'
 import ChatWidget from '@/components/ChatWidget'
 import NotificationCenter from '@/components/NotificationCenter'
 
@@ -16,6 +17,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
+        <Navigation />
         {children}
         <NotificationCenter />
         <ChatWidget />

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth } from '@/lib/middleware/auth'
+import { getAuthContext, requireAuth } from '@/lib/middleware/auth'
 import {
   getSLAPolicyById,
   updateSLAPolicy,
@@ -20,18 +20,14 @@ const updateSLAPolicySchema = z.object({
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authContext = await requireAuth(request)
-    if (!authContext) {
-      return NextResponse.json(
-        { success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } },
-        { status: 401 }
-      )
-    }
+    const authContext = await getAuthContext(request)
+    requireAuth(authContext)
 
-    const policy = await getSLAPolicyById(params.id)
+    const { id } = await params
+    const policy = await getSLAPolicyById(id)
 
     if (!policy) {
       return NextResponse.json(
@@ -69,20 +65,15 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authContext = await requireAuth(request)
-    if (!authContext) {
-      return NextResponse.json(
-        { success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } },
-        { status: 401 }
-      )
-    }
+    const authContext = await getAuthContext(request)
+    requireAuth(authContext)
 
     // Check if user has IT Manager or Admin role
     const hasManagerRole = authContext.user.roles.some(
-      (r) => r.role.name === 'IT_MANAGER' || r.role.name === 'ADMIN'
+      (r) => r === 'IT_MANAGER' || r === 'ADMIN'
     )
 
     if (!hasManagerRole) {
@@ -95,7 +86,8 @@ export async function PUT(
     const body = await request.json()
     const validatedData = updateSLAPolicySchema.parse(body)
 
-    const policy = await updateSLAPolicy(params.id, validatedData)
+    const { id } = await params
+    const policy = await updateSLAPolicy(id, validatedData)
 
     return NextResponse.json(
       {
@@ -134,20 +126,15 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authContext = await requireAuth(request)
-    if (!authContext) {
-      return NextResponse.json(
-        { success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } },
-        { status: 401 }
-      )
-    }
+    const authContext = await getAuthContext(request)
+    requireAuth(authContext)
 
     // Check if user has IT Manager or Admin role
     const hasManagerRole = authContext.user.roles.some(
-      (r) => r.role.name === 'IT_MANAGER' || r.role.name === 'ADMIN'
+      (r) => r === 'IT_MANAGER' || r === 'ADMIN'
     )
 
     if (!hasManagerRole) {
@@ -157,7 +144,8 @@ export async function DELETE(
       )
     }
 
-    await deleteSLAPolicy(params.id)
+    const { id } = await params
+    await deleteSLAPolicy(id)
 
     return NextResponse.json(
       {

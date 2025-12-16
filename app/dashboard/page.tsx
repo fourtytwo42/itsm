@@ -295,6 +295,19 @@ export default function DashboardPage() {
             View Changes
           </Link>
           <Link
+            href="/kb"
+            style={{
+              padding: '0.75rem 1.5rem',
+              backgroundColor: 'var(--bg-secondary)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '6px',
+              textDecoration: 'none',
+              color: 'var(--text-primary)',
+            }}
+          >
+            Knowledge Base
+          </Link>
+          <Link
             href="/admin/sla"
             style={{
               padding: '0.75rem 1.5rem',
@@ -306,6 +319,32 @@ export default function DashboardPage() {
             }}
           >
             SLA Management
+          </Link>
+          <Link
+            href="/admin/config"
+            style={{
+              padding: '0.75rem 1.5rem',
+              backgroundColor: 'var(--bg-secondary)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '6px',
+              textDecoration: 'none',
+              color: 'var(--text-primary)',
+            }}
+          >
+            Configuration
+          </Link>
+          <Link
+            href="/admin/users"
+            style={{
+              padding: '0.75rem 1.5rem',
+              backgroundColor: 'var(--bg-secondary)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '6px',
+              textDecoration: 'none',
+              color: 'var(--text-primary)',
+            }}
+          >
+            User Management
           </Link>
         </div>
       </div>

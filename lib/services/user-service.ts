@@ -10,6 +10,8 @@ export interface CreateUserInput {
   roles?: RoleName[]
   isActive?: boolean
   emailVerified?: boolean
+  tenantId?: string
+  organizationId?: string
 }
 
 export interface UpdateUserInput {
@@ -20,6 +22,8 @@ export interface UpdateUserInput {
   roles?: RoleName[]
   isActive?: boolean
   emailVerified?: boolean
+  tenantId?: string
+  organizationId?: string
 }
 
 export interface UserFilters {
@@ -27,6 +31,10 @@ export interface UserFilters {
   role?: RoleName
   isActive?: boolean
   emailVerified?: boolean
+  tenantId?: string
+  organizationId?: string // Filter by organization
+  userId?: string // For filtering by user's organization
+  userRoles?: string[] // User's roles
   page?: number
   limit?: number
   sort?: string
@@ -49,6 +57,31 @@ export async function getUsers(filters: UserFilters = {}) {
 
   const where: any = {
     deletedAt: null,
+  }
+
+  // Filter by organization - if user is not GLOBAL_ADMIN, filter by their organization
+  if (filters.userId && filters.userRoles) {
+    if (!filters.userRoles.includes('GLOBAL_ADMIN')) {
+      // Get user's organization
+      const user = await prisma.user.findUnique({
+        where: { id: filters.userId },
+        select: { organizationId: true },
+      })
+      if (user?.organizationId) {
+        where.organizationId = user.organizationId
+      } else {
+        // User has no organization, return empty
+        return { users: [], pagination: { page, limit, total: 0, totalPages: 0 } }
+      }
+    }
+  }
+
+  if (filters.organizationId) {
+    where.organizationId = filters.organizationId
+  }
+
+  if (filters.tenantId) {
+    where.tenantId = filters.tenantId
   }
 
   if (search) {
@@ -171,6 +204,8 @@ export async function createUser(input: CreateUserInput) {
       lastName: input.lastName,
       isActive: input.isActive ?? true,
       emailVerified: input.emailVerified ?? false,
+      tenantId: input.tenantId,
+      organizationId: input.organizationId,
       roles: {
         create: roles.map((roleName) => ({
           role: {
@@ -252,6 +287,14 @@ export async function updateUser(id: string, input: UpdateUserInput) {
     updateData.emailVerified = input.emailVerified
   }
 
+  if (input.tenantId !== undefined) {
+    updateData.tenantId = input.tenantId
+  }
+
+  if (input.organizationId !== undefined) {
+    updateData.organizationId = input.organizationId
+  }
+
   // Update roles if provided
   if (input.roles) {
     // Delete existing roles
@@ -315,6 +358,189 @@ export async function deleteUser(id: string) {
   })
 
   return { success: true }
+}
+
+// Agent assignment to tenants by IT Managers
+export async function assignAgentToTenant(
+  agentId: string,
+  tenantId: string,
+  managerId: string
+) {
+  // Verify manager can manage the tenant (is IT_MANAGER or ADMIN in same organization)
+  const manager = await prisma.user.findUnique({
+    where: { id: managerId },
+    include: {
+      roles: {
+        include: {
+          role: true,
+        },
+      },
+    },
+  })
+
+  if (!manager) {
+    throw new Error('Manager not found')
+  }
+
+  const isAdmin = manager.roles.some((ur) => ur.role.name === 'ADMIN')
+  const isITManager = manager.roles.some((ur) => ur.role.name === 'IT_MANAGER')
+
+  if (!isAdmin && !isITManager) {
+    throw new Error('Only IT Managers or Admins can assign agents')
+  }
+
+  // Get tenant and verify it belongs to manager's organization
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { organizationId: true },
+  })
+
+  if (!tenant) {
+    throw new Error('Tenant not found')
+  }
+
+  if (manager.organizationId !== tenant.organizationId) {
+    throw new Error('You can only assign agents to tenants in your organization')
+  }
+
+  // Get agent and verify they belong to same organization
+  const agent = await prisma.user.findUnique({
+    where: { id: agentId },
+    select: { organizationId: true, roles: { include: { role: true } } },
+  })
+
+  if (!agent) {
+    throw new Error('Agent not found')
+  }
+
+  // Verify agent is actually an agent
+  const isAgent = agent.roles.some((ur) => ur.role.name === 'AGENT')
+  if (!isAgent) {
+    throw new Error('User is not an agent')
+  }
+
+  if (agent.organizationId !== tenant.organizationId) {
+    throw new Error('Agent must belong to the same organization as the tenant')
+  }
+
+  // Check if assignment already exists
+  const existing = await prisma.tenantAssignment.findFirst({
+    where: {
+      tenantId,
+      userId: agentId,
+      category: null,
+    },
+  })
+
+  let assignment
+  if (existing) {
+    assignment = existing
+  } else {
+    assignment = await prisma.tenantAssignment.create({
+      data: {
+        tenantId,
+        userId: agentId,
+        category: null, // Assigned to all categories
+      },
+    })
+  }
+
+  return assignment
+}
+
+export async function unassignAgentFromTenant(
+  agentId: string,
+  tenantId: string,
+  managerId: string
+) {
+  // Verify manager can manage the tenant
+  const manager = await prisma.user.findUnique({
+    where: { id: managerId },
+    include: {
+      roles: {
+        include: {
+          role: true,
+        },
+      },
+    },
+  })
+
+  if (!manager) {
+    throw new Error('Manager not found')
+  }
+
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { organizationId: true },
+  })
+
+  if (!tenant) {
+    throw new Error('Tenant not found')
+  }
+
+  if (manager.organizationId !== tenant.organizationId) {
+    throw new Error('You can only manage tenants in your organization')
+  }
+
+  // Delete assignment
+  await prisma.tenantAssignment.deleteMany({
+    where: {
+      tenantId,
+      userId: agentId,
+    },
+  })
+
+  return { success: true }
+}
+
+export async function getAgentTenantAssignments(agentId: string) {
+  return prisma.tenantAssignment.findMany({
+    where: { userId: agentId },
+    include: {
+      tenant: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          organizationId: true,
+        },
+      },
+    },
+  })
+}
+
+export async function canManageAgentInOrganization(
+  managerId: string,
+  agentId: string
+): Promise<boolean> {
+  // Check if manager and agent are in same organization
+  const manager = await prisma.user.findUnique({
+    where: { id: managerId },
+    select: { organizationId: true, roles: { include: { role: true } } },
+  })
+
+  if (!manager) {
+    return false
+  }
+
+  const isAdmin = manager.roles.some((ur) => ur.role.name === 'ADMIN')
+  const isITManager = manager.roles.some((ur) => ur.role.name === 'IT_MANAGER')
+
+  if (!isAdmin && !isITManager) {
+    return false
+  }
+
+  const agent = await prisma.user.findUnique({
+    where: { id: agentId },
+    select: { organizationId: true },
+  })
+
+  if (!agent) {
+    return false
+  }
+
+  // Must be in same organization
+  return manager.organizationId === agent.organizationId
 }
 
 export async function activateUser(id: string) {

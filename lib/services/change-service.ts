@@ -17,6 +17,8 @@ export interface CreateChangeRequestInput {
   plannedEndDate?: Date
   relatedTicketId?: string
   requestedById: string
+  tenantId?: string
+  organizationId?: string | null // Change request belongs to an organization
 }
 
 export interface UpdateChangeRequestInput {
@@ -39,6 +41,10 @@ export interface ListChangeRequestsFilters {
   priority?: ChangePriority
   requestedBy?: string
   search?: string
+  tenantId?: string
+  organizationId?: string // Filter by organization
+  userId?: string // For filtering by user's organization
+  userRoles?: string[] // User's roles
   page?: number
   limit?: number
   sort?: string
@@ -81,6 +87,8 @@ export async function createChangeRequest(input: CreateChangeRequestInput) {
       plannedEndDate: input.plannedEndDate,
       relatedTicketId: input.relatedTicketId,
       requestedById: input.requestedById,
+      tenantId: input.tenantId || null,
+      organizationId: input.organizationId || null,
       status: ChangeStatus.DRAFT,
     },
     include: {
@@ -169,6 +177,31 @@ export async function listChangeRequests(filters: ListChangeRequestsFilters = {}
 
   const where: any = {
     deletedAt: null,
+  }
+
+  // Filter by organization - if user is not GLOBAL_ADMIN, filter by their organization
+  if (filters.userId && filters.userRoles) {
+    if (!filters.userRoles.includes('GLOBAL_ADMIN')) {
+      // Get user's organization
+      const user = await prisma.user.findUnique({
+        where: { id: filters.userId },
+        select: { organizationId: true },
+      })
+      if (user?.organizationId) {
+        where.organizationId = user.organizationId
+      } else {
+        // User has no organization, return empty
+        return { changeRequests: [], total: 0, page, limit, totalPages: 0 }
+      }
+    }
+  }
+
+  if (filters.organizationId) {
+    where.organizationId = filters.organizationId
+  }
+
+  if (filters.tenantId) {
+    where.tenantId = filters.tenantId
   }
 
   if (filters.type) {

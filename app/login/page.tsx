@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 const DEMO_ACCOUNTS = [
-  { email: 'admin@demo.com', password: 'demo123', label: 'Admin' },
+  { email: 'global@demo.com', password: 'demo123', label: 'Global Admin' },
+  { email: 'admin@demo-organization.demo', password: 'demo123', label: 'Organization Admin' },
   { email: 'manager@demo.com', password: 'demo123', label: 'IT Manager' },
   { email: 'agent@demo.com', password: 'demo123', label: 'Agent' },
   { email: 'user@demo.com', password: 'demo123', label: 'End User' },
@@ -24,10 +25,12 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
+      const publicToken = localStorage.getItem('publicToken')
       const response = await fetch('/api/v1/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(publicToken && { 'x-public-token': publicToken }),
         },
         body: JSON.stringify({ email, password }),
       })
@@ -59,6 +62,10 @@ export default function LoginPage() {
         localStorage.setItem('accessToken', data.data.accessToken)
         localStorage.setItem('refreshToken', data.data.refreshToken)
         localStorage.setItem('user', JSON.stringify(data.data.user))
+        
+        // Clear public token after successful login (tickets are now merged)
+        localStorage.removeItem('publicToken')
+        localStorage.removeItem('publicTokenId')
       } catch (storageError) {
         setError('Failed to save login credentials')
         setLoading(false)
@@ -68,8 +75,12 @@ export default function LoginPage() {
       // Reset loading state before redirect
       setLoading(false)
       
+      // Check for redirect parameter
+      const urlParams = new URLSearchParams(window.location.search)
+      const redirect = urlParams.get('redirect') || '/dashboard'
+      
       // Use window.location for full page reload to ensure middleware doesn't block
-      window.location.href = '/dashboard'
+      window.location.href = redirect
     } catch (err: any) {
       console.error('Login error:', err)
       setError(err.message || 'An unexpected error occurred. Please try again.')

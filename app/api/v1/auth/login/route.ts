@@ -14,6 +14,19 @@ export async function POST(request: NextRequest) {
 
     const result = await authenticateUser(validatedData)
 
+    // Merge public token tickets to user account if public token is provided
+    const publicTokenHeader = request.headers.get('x-public-token')
+    if (publicTokenHeader) {
+      try {
+        const { verifyPublicToken } = await import('@/lib/jwt')
+        const payload = verifyPublicToken(publicTokenHeader)
+        const { mergePublicTokenTicketsToUser } = await import('@/lib/services/ticket-service')
+        await mergePublicTokenTicketsToUser(payload.publicId, result.user.id)
+      } catch (error) {
+        // Silently fail - merging tickets is optional
+      }
+    }
+
     return NextResponse.json(
       {
         success: true,

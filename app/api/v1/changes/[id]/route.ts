@@ -6,6 +6,8 @@ import {
   deleteChangeRequest,
   submitChangeRequest,
 } from '@/lib/services/change-service'
+import { auditLog } from '@/lib/middleware/audit'
+import { AuditEventType } from '@prisma/client'
 import { z } from 'zod'
 import { ChangeType, ChangePriority, RiskLevel } from '@prisma/client'
 
@@ -92,6 +94,10 @@ export async function PUT(
     const validatedData = updateChangeRequestSchema.parse(body)
 
     const { id } = await params
+
+    // Get old change request data for audit
+    const oldChangeRequest = await getChangeRequestById(id)
+
     const changeRequest = await updateChangeRequest(id, {
       ...validatedData,
       plannedStartDate: validatedData.plannedStartDate ? new Date(validatedData.plannedStartDate) : undefined,
@@ -100,6 +106,18 @@ export async function PUT(
       actualEndDate: validatedData.actualEndDate ? new Date(validatedData.actualEndDate) : undefined,
       relatedTicketId: validatedData.relatedTicketId === null ? undefined : validatedData.relatedTicketId,
     })
+
+    // Log audit event
+    await auditLog(
+      AuditEventType.CHANGE_UPDATED,
+      'ChangeRequest',
+      changeRequest.id,
+      authContext.user.id,
+      authContext.user.email,
+      `Updated change request: ${changeRequest.changeNumber}`,
+      { changeId: changeRequest.id, changeNumber: changeRequest.changeNumber, changes: validatedData },
+      request
+    )
 
     return NextResponse.json(
       {
@@ -157,7 +175,25 @@ export async function DELETE(
     }
 
     const { id } = await params
+
+    // Get change request data for audit before deletion
+    const changeRequest = await getChangeRequestById(id)
+
     await deleteChangeRequest(id)
+
+    // Log audit event
+    if (changeRequest) {
+      await auditLog(
+        AuditEventType.CHANGE_DELETED,
+        'ChangeRequest',
+        id,
+        authContext.user.id,
+        authContext.user.email,
+        `Deleted change request: ${changeRequest.changeNumber}`,
+        { changeId: id, changeNumber: changeRequest.changeNumber, title: changeRequest.title },
+        request
+      )
+    }
 
     return NextResponse.json(
       {

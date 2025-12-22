@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { RoleName } from '@prisma/client'
+import OrganizationContext from '@/components/OrganizationContext'
 
 interface User {
   id: string

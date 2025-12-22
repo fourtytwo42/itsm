@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthContext, requireAuth } from '@/lib/middleware/auth'
-import { activateUser, deactivateUser } from '@/lib/services/user-service'
+import { activateUser, deactivateUser, getUserById } from '@/lib/services/user-service'
+import { auditLog } from '@/lib/middleware/audit'
+import { AuditEventType } from '@prisma/client'
 
 export async function POST(
   request: NextRequest,
@@ -22,7 +24,24 @@ export async function POST(
     const searchParams = request.nextUrl.searchParams
     const action = searchParams.get('action') || 'activate'
 
+    // Get user data for audit
+    const userData = await getUserById(id)
+
     const user = action === 'activate' ? await activateUser(id) : await deactivateUser(id)
+
+    // Log audit event
+    if (userData) {
+      await auditLog(
+        action === 'activate' ? AuditEventType.USER_ACTIVATED : AuditEventType.USER_DEACTIVATED,
+        'User',
+        id,
+        authContext.user.id,
+        authContext.user.email,
+        `${action === 'activate' ? 'Activated' : 'Deactivated'} user: ${userData.email}`,
+        { userId: id, email: userData.email },
+        request
+      )
+    }
 
     return NextResponse.json(
       {

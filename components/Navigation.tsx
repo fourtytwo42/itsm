@@ -26,7 +26,8 @@ export default function Navigation() {
     localStorage.removeItem('accessToken')
     localStorage.removeItem('refreshToken')
     localStorage.removeItem('user')
-    router.push('/login')
+    // Use window.location for full page reload to prevent client-side errors
+    window.location.href = '/login'
   }
 
   // Don't show navigation on login/register/landing pages

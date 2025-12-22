@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthContext, requireAuth } from '@/lib/middleware/auth'
 import { getUsers, createUser } from '@/lib/services/user-service'
+import { auditLog } from '@/lib/middleware/audit'
+import { AuditEventType } from '@prisma/client'
 import { z } from 'zod'
 import { RoleName } from '@prisma/client'
 
@@ -33,6 +35,8 @@ export async function GET(req: NextRequest) {
       role: searchParams.get('role') as RoleName | undefined,
       isActive: searchParams.get('isActive') === 'true' ? true : searchParams.get('isActive') === 'false' ? false : undefined,
       emailVerified: searchParams.get('emailVerified') === 'true' ? true : searchParams.get('emailVerified') === 'false' ? false : undefined,
+      userId: authContext.user.id,
+      userRoles: authContext.user.roles,
       page: parseInt(searchParams.get('page') || '1'),
       limit: parseInt(searchParams.get('limit') || '20'),
       sort: searchParams.get('sort') || 'createdAt',
@@ -78,7 +82,22 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const validatedData = createUserSchema.parse(body)
 
-    const user = await createUser(validatedData)
+    const user = await createUser({
+      ...validatedData,
+      organizationId: authContext.user.organizationId || undefined,
+    })
+
+    // Log audit event
+    await auditLog(
+      AuditEventType.USER_CREATED,
+      'User',
+      user.id,
+      authContext.user.id,
+      authContext.user.email,
+      `Created user: ${user.email}`,
+      { userId: user.id, email: user.email, roles: validatedData.roles },
+      req
+    )
 
     return NextResponse.json(
       {

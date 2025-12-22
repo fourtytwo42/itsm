@@ -5,12 +5,15 @@ import {
   createAsset,
   exportAssetsToCSV,
 } from '@/lib/services/asset-service'
+import { auditLog } from '@/lib/middleware/audit'
+import { AuditEventType } from '@prisma/client'
 import { z } from 'zod'
 import { AssetType, AssetStatus } from '@prisma/client'
 
 const createAssetSchema = z.object({
   name: z.string().min(1),
   type: z.nativeEnum(AssetType),
+  customAssetTypeId: z.string().uuid().optional(),
   category: z.string().optional(),
   manufacturer: z.string().optional(),
   model: z.string().optional(),
@@ -48,6 +51,8 @@ export async function GET(request: NextRequest) {
       status: status || undefined,
       assignedTo: assignedTo || undefined,
       search: search || undefined,
+      userId: authContext.user.id,
+      userRoles: authContext.user.roles,
       page,
       limit,
       sort,
@@ -122,11 +127,38 @@ export async function POST(request: NextRequest) {
     const validatedData = createAssetSchema.parse(body)
 
     const asset = await createAsset({
-      ...validatedData,
+      name: validatedData.name,
+      type: validatedData.type,
+      customAssetTypeId: validatedData.customAssetTypeId,
+      category: validatedData.category,
+      manufacturer: validatedData.manufacturer,
+      model: validatedData.model,
+      serialNumber: validatedData.serialNumber,
+      status: validatedData.status,
+      assignedToId: validatedData.assignedToId,
+      location: validatedData.location,
+      building: validatedData.building,
+      floor: validatedData.floor,
+      room: validatedData.room,
       purchaseDate: validatedData.purchaseDate ? new Date(validatedData.purchaseDate) : undefined,
+      purchasePrice: validatedData.purchasePrice,
       warrantyExpiry: validatedData.warrantyExpiry ? new Date(validatedData.warrantyExpiry) : undefined,
+      customFields: validatedData.customFields,
       createdById: authContext.user.id,
+      organizationId: authContext.user.organizationId || undefined,
     })
+
+    // Log audit event
+    await auditLog(
+      AuditEventType.ASSET_CREATED,
+      'Asset',
+      asset.id,
+      authContext.user.id,
+      authContext.user.email,
+      `Created asset: ${asset.assetNumber} - ${asset.name}`,
+      { assetId: asset.id, assetNumber: asset.assetNumber, name: asset.name, type: asset.type },
+      request
+    )
 
     return NextResponse.json(
       {

@@ -16,6 +16,12 @@ export interface RefreshTokenPayload {
   email: string
 }
 
+export interface PublicTokenPayload {
+  publicId: string // Unique identifier for this browser/session
+  tenantId?: string // Optional tenant ID if visiting a specific tenant
+  createdAt: number // Timestamp when token was created
+}
+
 export function signToken(payload: TokenPayload): string {
   return jwt.sign(payload, JWT_SECRET, {
     expiresIn: JWT_EXPIRES_IN,
@@ -49,6 +55,27 @@ export function verifyRefreshToken(token: string): RefreshTokenPayload {
     return decoded
   } catch (error) {
     throw new Error('Invalid or expired refresh token')
+  }
+}
+
+// Public JWT for anonymous users (longer expiration - 1 year)
+const PUBLIC_JWT_EXPIRES_IN = '365d'
+
+export function signPublicToken(payload: PublicTokenPayload): string {
+  return jwt.sign(payload, JWT_SECRET, {
+    expiresIn: PUBLIC_JWT_EXPIRES_IN,
+    algorithm: 'HS256',
+  })
+}
+
+export function verifyPublicToken(token: string): PublicTokenPayload {
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET, {
+      algorithms: ['HS256'],
+    }) as PublicTokenPayload
+    return decoded
+  } catch (error) {
+    throw new Error('Invalid or expired public token')
   }
 }
 

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthContext, requireAuth } from '@/lib/middleware/auth'
 import { getUserById, updateUser, deleteUser } from '@/lib/services/user-service'
+import { auditLog } from '@/lib/middleware/audit'
+import { AuditEventType } from '@prisma/client'
 import { z } from 'zod'
 import { RoleName } from '@prisma/client'
 
@@ -74,7 +76,27 @@ export async function PUT(
     const body = await request.json()
     const validatedData = updateUserSchema.parse(body)
 
+    // Get old user data for audit
+    const oldUser = await getUserById(id)
+
     const user = await updateUser(id, validatedData)
+
+    // Log audit event
+    await auditLog(
+      AuditEventType.USER_UPDATED,
+      'User',
+      user.id,
+      authContext.user.id,
+      authContext.user.email,
+      `Updated user: ${user.email}`,
+      {
+        userId: user.id,
+        email: user.email,
+        changes: validatedData,
+        oldValues: oldUser ? { isActive: oldUser.isActive, roles: oldUser.roles.map((r: any) => r.role.name) } : null,
+      },
+      request
+    )
 
     return NextResponse.json(
       {
@@ -137,7 +159,24 @@ export async function DELETE(
       )
     }
 
+    // Get user data for audit before deletion
+    const user = await getUserById(id)
+
     await deleteUser(id)
+
+    // Log audit event
+    if (user) {
+      await auditLog(
+        AuditEventType.USER_DELETED,
+        'User',
+        id,
+        authContext.user.id,
+        authContext.user.email,
+        `Deleted user: ${user.email}`,
+        { userId: id, email: user.email },
+        request
+      )
+    }
 
     return NextResponse.json(
       {

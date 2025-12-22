@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { usePathname } from 'next/navigation'
 import { PaperAirplaneIcon, XMarkIcon } from '@heroicons/react/24/outline'
 
 interface Message {
@@ -9,6 +10,7 @@ interface Message {
 }
 
 export default function ChatWidget() {
+  const pathname = usePathname()
   const [isOpen, setIsOpen] = useState(false)
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -19,6 +21,11 @@ export default function ChatWidget() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  
+  // Hide this widget on tenant pages (they have their own TenantChatWidget)
+  if (pathname?.startsWith('/tenant/')) {
+    return null
+  }
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })

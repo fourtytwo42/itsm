@@ -7,6 +7,8 @@ export interface CreateArticleInput {
   tags?: string[]
   status?: ArticleStatus
   slug: string
+  organizationId?: string | null // Article belongs to an organization
+  tenantIds?: string[] | null // Array of tenant IDs, or null for "all tenants"
 }
 
 export interface UpdateArticleInput {
@@ -14,22 +16,40 @@ export interface UpdateArticleInput {
   content?: string
   tags?: string[]
   status?: ArticleStatus
+  tenantIds?: string[] | null // Array of tenant IDs, or null for "all tenants"
 }
 
 export async function createArticle(input: CreateArticleInput) {
-  return prisma.knowledgeBaseArticle.create({
+  // Create the article
+  const article = await prisma.knowledgeBaseArticle.create({
     data: {
       title: input.title,
       content: input.content,
       slug: input.slug,
       tags: input.tags ?? [],
       status: input.status ?? ArticleStatus.PUBLISHED,
+      organizationId: input.organizationId || null,
     },
   })
+
+  // If tenantIds is provided (not null), link the article to those tenants
+  // If tenantIds is null, the article is available to all tenants in the organization
+  if (input.tenantIds !== null && input.tenantIds && input.tenantIds.length > 0) {
+    await prisma.tenantKBArticle.createMany({
+      data: input.tenantIds.map((tenantId) => ({
+        tenantId,
+        articleId: article.id,
+      })),
+      skipDuplicates: true,
+    })
+  }
+
+  return article
 }
 
 export async function updateArticle(id: string, input: UpdateArticleInput) {
-  return prisma.knowledgeBaseArticle.update({
+  // Update the article
+  const article = await prisma.knowledgeBaseArticle.update({
     where: { id },
     data: {
       title: input.title,
@@ -38,6 +58,27 @@ export async function updateArticle(id: string, input: UpdateArticleInput) {
       status: input.status,
     },
   })
+
+  // If tenantIds is provided, update the tenant associations
+  if (input.tenantIds !== undefined) {
+    // Remove all existing tenant associations
+    await prisma.tenantKBArticle.deleteMany({
+      where: { articleId: id },
+    })
+
+    // If tenantIds is not null and has values, create new associations
+    if (input.tenantIds !== null && input.tenantIds.length > 0) {
+      await prisma.tenantKBArticle.createMany({
+        data: input.tenantIds.map((tenantId) => ({
+          tenantId,
+          articleId: id,
+        })),
+        skipDuplicates: true,
+      })
+    }
+  }
+
+  return article
 }
 
 export async function getArticleById(id: string) {
@@ -52,28 +93,72 @@ export async function getArticleBySlug(slug: string) {
   })
 }
 
-export async function listArticles(params?: { status?: ArticleStatus; tag?: string }) {
+export async function listArticles(params?: { status?: ArticleStatus; tag?: string; tenantId?: string; organizationId?: string; userId?: string; userRoles?: string[] }) {
+  const where: any = {
+    status: params?.status,
+    tags: params?.tag ? { has: params.tag } : undefined,
+  }
+
+  // Filter by organization - if user is not GLOBAL_ADMIN, filter by their organization
+  if (params?.userId && params?.userRoles) {
+    if (!params.userRoles.includes('GLOBAL_ADMIN')) {
+      // Get user's organization
+      const user = await prisma.user.findUnique({
+        where: { id: params.userId },
+        select: { organizationId: true },
+      })
+      if (user?.organizationId) {
+        where.organizationId = user.organizationId
+      } else {
+        // User has no organization, return empty
+        return []
+      }
+    }
+  }
+
+  if (params?.organizationId) {
+    where.organizationId = params.organizationId
+  }
+
+  // Filter by tenant using the join table
+  if (params?.tenantId) {
+    where.tenantKBArticles = {
+      some: {
+        tenantId: params.tenantId,
+      },
+    }
+  }
+
   return prisma.knowledgeBaseArticle.findMany({
-    where: {
-      status: params?.status,
-      tags: params?.tag ? { has: params.tag } : undefined,
-    },
+    where,
     orderBy: { createdAt: 'desc' },
   })
 }
 
-export async function searchArticles(query: string) {
+export async function searchArticles(query: string, tenantId?: string) {
   if (!query.trim()) return []
   const q = query.toLowerCase()
+  
+  const where: any = {
+    OR: [
+      { title: { contains: q, mode: 'insensitive' } },
+      { content: { contains: q, mode: 'insensitive' } },
+      { tags: { has: query } },
+    ],
+    status: ArticleStatus.PUBLISHED,
+  }
+
+  // Filter by tenant if provided
+  if (tenantId) {
+    where.tenantKBArticles = {
+      some: {
+        tenantId,
+      },
+    }
+  }
+
   return prisma.knowledgeBaseArticle.findMany({
-    where: {
-      OR: [
-        { title: { contains: q, mode: 'insensitive' } },
-        { content: { contains: q, mode: 'insensitive' } },
-        { tags: { has: query } },
-      ],
-      status: ArticleStatus.PUBLISHED,
-    },
+    where,
     orderBy: { createdAt: 'desc' },
   })
 }

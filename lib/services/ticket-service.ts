@@ -11,9 +11,16 @@ import {
 export interface CreateTicketInput {
   subject: string
   description: string
-  requesterId: string
+  requesterId?: string // Optional for unauthenticated users
+  requesterEmail?: string // For unauthenticated users
+  requesterName?: string // For unauthenticated users
+  publicTokenId?: string // For anonymous users with public JWT
   priority?: TicketPriority
   assigneeId?: string | null
+  tenantId?: string | null
+  organizationId?: string | null // Ticket belongs to an organization
+  category?: string | null
+  customFields?: Record<string, any>
 }
 
 export interface UpdateTicketInput {
@@ -40,19 +47,38 @@ export async function generateTicketNumber(): Promise<string> {
 export async function createTicket(input: CreateTicketInput) {
   const ticketNumber = await generateTicketNumber()
 
+  // Handle unauthenticated users
+  if (!input.requesterId && (!input.requesterEmail || !input.requesterName)) {
+    throw new Error('Either requesterId or requesterEmail/requesterName must be provided')
+  }
+
   const ticket = await prisma.ticket.create({
     data: {
       ticketNumber,
       subject: input.subject,
       description: input.description,
-      requesterId: input.requesterId,
+      requesterId: input.requesterId || null,
+      requesterEmail: input.requesterEmail || null,
+      requesterName: input.requesterName || null,
+      publicTokenId: input.publicTokenId || null,
       assigneeId: input.assigneeId || null,
+      tenantId: input.tenantId || null,
+      organizationId: input.organizationId || null,
+      category: input.category || null,
+      customFields: input.customFields ? (input.customFields as any) : null,
       priority: input.priority ?? TicketPriority.MEDIUM,
       status: TicketStatus.NEW,
     },
     include: {
-      requester: { select: { id: true, email: true, firstName: true, lastName: true } },
+      requester: input.requesterId ? { select: { id: true, email: true, firstName: true, lastName: true } } : false,
       assignee: { select: { id: true, email: true, firstName: true, lastName: true } },
+      tenant: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+        },
+      },
     },
   })
 
@@ -64,18 +90,51 @@ export async function createTicket(input: CreateTicketInput) {
       subject: ticket.subject,
       status: ticket.status,
       priority: ticket.priority,
-      requester: ticket.requester,
+      requester: ticket.requester || { email: (ticket as any).requesterEmail || '', name: (ticket as any).requesterName || '' },
       assignee: ticket.assignee,
       createdAt: ticket.createdAt,
     },
   })
 
-  // Create notification for assignee if assigned
-  if (ticket.assigneeId) {
-    await notifyTicketCreated(ticket.id, ticket.ticketNumber, ticket.assigneeId)
+  // Auto-route ticket if tenant and category are provided but no assignee
+  let finalTicket = ticket
+  if (!ticket.assigneeId && input.tenantId && input.category) {
+    const { routeTicketByCategory, assignTicketToAgent } = await import('./ticket-routing-service')
+    const agentId = await routeTicketByCategory({
+      ticketId: ticket.id,
+      tenantId: input.tenantId,
+      category: input.category,
+    })
+
+    if (agentId) {
+      await assignTicketToAgent(ticket.id, agentId)
+      // Reload ticket to get updated assignee
+      const updatedTicket = await prisma.ticket.findUnique({
+        where: { id: ticket.id },
+        include: {
+          requester: input.requesterId ? { select: { id: true, email: true, firstName: true, lastName: true } } : false,
+          assignee: { select: { id: true, email: true, firstName: true, lastName: true } },
+          tenant: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+            },
+          },
+        },
+      })
+      if (updatedTicket) {
+        finalTicket = updatedTicket as any
+      }
+    }
   }
 
-  return ticket
+  // Create notification for assignee if assigned
+  if (finalTicket.assigneeId) {
+    await notifyTicketCreated(finalTicket.id, finalTicket.ticketNumber, finalTicket.assigneeId)
+  }
+
+  return finalTicket
 }
 
 export async function listTickets(params?: {
@@ -83,18 +142,97 @@ export async function listTickets(params?: {
   priority?: TicketPriority
   assigneeId?: string
   requesterId?: string
+  publicTokenId?: string // For filtering by public token
+  tenantId?: string
+  organizationId?: string // Filter by organization
+  category?: string
+  userId?: string // For filtering by user's assigned categories
+  userRoles?: string[] // User's roles
 }) {
+  const where: any = {
+    status: params?.status,
+    priority: params?.priority,
+    assigneeId: params?.assigneeId,
+    requesterId: params?.requesterId,
+    publicTokenId: params?.publicTokenId,
+    tenantId: params?.tenantId,
+    category: params?.category,
+  }
+
+  // Filter by organization - if user is not GLOBAL_ADMIN, filter by their organization
+  if (params?.userId && params?.userRoles) {
+    if (!params.userRoles.includes('GLOBAL_ADMIN')) {
+      // Get user's organization
+      const user = await prisma.user.findUnique({
+        where: { id: params.userId },
+        select: { organizationId: true },
+      })
+      if (user?.organizationId) {
+        where.organizationId = user.organizationId
+      } else {
+        // User has no organization, return empty
+        return []
+      }
+    }
+  }
+
+  if (params?.organizationId) {
+    where.organizationId = params.organizationId
+  }
+
+  // Filter by user's assigned categories if user is AGENT or IT_MANAGER
+  if (params?.userId && params?.userRoles) {
+    const isAgentOrManager = params.userRoles.some((r) => ['AGENT', 'IT_MANAGER'].includes(r))
+    if (isAgentOrManager && !params.userRoles.includes('GLOBAL_ADMIN') && !params.userRoles.includes('ADMIN')) {
+      // Get user's assigned categories
+      const { getUserAssignedCategories } = await import('./tenant-service')
+      const categoryMap = await getUserAssignedCategories(params.userId)
+
+      if (categoryMap.size > 0) {
+        // Build OR conditions for tenantId + category combinations
+        const categoryConditions: any[] = []
+        categoryMap.forEach((categories, tenantId) => {
+          if (categories.size > 0) {
+            categoryConditions.push({
+              tenantId,
+              category: { in: Array.from(categories) },
+            })
+          }
+        })
+
+        if (categoryConditions.length > 0) {
+          where.OR = categoryConditions
+        } else {
+          // User has no category assignments, return empty
+          return []
+        }
+      } else {
+        // User has no assignments, return empty
+        return []
+      }
+    }
+  }
+
+  // Remove undefined values
+  Object.keys(where).forEach((key) => {
+    if (where[key] === undefined) {
+      delete where[key]
+    }
+  })
+
   return prisma.ticket.findMany({
-    where: {
-      status: params?.status,
-      priority: params?.priority,
-      assigneeId: params?.assigneeId,
-      requesterId: params?.requesterId,
-    },
+    where,
     orderBy: { createdAt: 'desc' },
     include: {
       requester: { select: { id: true, email: true, firstName: true, lastName: true } },
       assignee: { select: { id: true, email: true, firstName: true, lastName: true } },
+      tenant: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+        },
+      },
     },
   })
 }
@@ -105,6 +243,13 @@ export async function getTicketById(id: string) {
     include: {
       requester: { select: { id: true, email: true, firstName: true, lastName: true } },
       assignee: { select: { id: true, email: true, firstName: true, lastName: true } },
+      tenant: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+        },
+      },
       comments: {
         orderBy: { createdAt: 'asc' },
         include: {
@@ -264,5 +409,22 @@ export async function addTicketComment(input: AddCommentInput) {
   }
 
   return comment
+}
+
+// Merge public token tickets to a user account (called on login/register)
+export async function mergePublicTokenTicketsToUser(publicTokenId: string, userId: string) {
+  // Update all tickets with this public token to be owned by the user
+  const updated = await prisma.ticket.updateMany({
+    where: {
+      publicTokenId,
+      requesterId: null, // Only update tickets that aren't already assigned to a user
+    },
+    data: {
+      requesterId: userId,
+      publicTokenId: null, // Clear the public token ID
+    },
+  })
+
+  return updated.count
 }
 

@@ -32,6 +32,8 @@ export async function GET(request: NextRequest) {
       startDate,
       endDate,
       agentId,
+      userId: authContext.user.id,
+      userRoles: authContext.user.roles,
     })
 
     return NextResponse.json(

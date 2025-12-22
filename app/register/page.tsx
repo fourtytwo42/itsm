@@ -40,10 +40,12 @@ export default function RegisterPage() {
     setLoading(true)
 
     try {
+      const publicToken = localStorage.getItem('publicToken')
       const response = await fetch('/api/v1/auth/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(publicToken && { 'x-public-token': publicToken }),
         },
         body: JSON.stringify({
           email: formData.email,
@@ -65,9 +67,17 @@ export default function RegisterPage() {
       localStorage.setItem('accessToken', data.data.accessToken)
       localStorage.setItem('refreshToken', data.data.refreshToken)
       localStorage.setItem('user', JSON.stringify(data.data.user))
+      
+      // Clear public token after successful registration (tickets are now merged)
+      localStorage.removeItem('publicToken')
+      localStorage.removeItem('publicTokenId')
 
-      // Redirect to dashboard
-      router.push('/dashboard')
+      // Check for redirect parameter
+      const urlParams = new URLSearchParams(window.location.search)
+      const redirect = urlParams.get('redirect') || '/dashboard'
+
+      // Redirect to the specified page or dashboard
+      window.location.href = redirect
     } catch (err) {
       setError('An unexpected error occurred')
       setLoading(false)

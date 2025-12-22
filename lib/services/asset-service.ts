@@ -9,6 +9,7 @@ import {
 export interface CreateAssetInput {
   name: string
   type: AssetType
+  customAssetTypeId?: string
   category?: string
   manufacturer?: string
   model?: string
@@ -24,6 +25,8 @@ export interface CreateAssetInput {
   warrantyExpiry?: Date
   customFields?: Record<string, any>
   createdById?: string
+  tenantId?: string
+  organizationId?: string | null // Asset belongs to an organization
 }
 
 export interface UpdateAssetInput {
@@ -50,6 +53,10 @@ export interface ListAssetsFilters {
   status?: AssetStatus
   assignedTo?: string
   search?: string
+  tenantId?: string
+  organizationId?: string // Filter by organization
+  userId?: string // For filtering by user's organization
+  userRoles?: string[] // User's roles
   page?: number
   limit?: number
   sort?: string
@@ -85,6 +92,7 @@ export async function createAsset(input: CreateAssetInput) {
       assetNumber,
       name: input.name,
       type: input.type,
+      customAssetTypeId: input.customAssetTypeId || null,
       category: input.category,
       manufacturer: input.manufacturer,
       model: input.model,
@@ -101,6 +109,8 @@ export async function createAsset(input: CreateAssetInput) {
       warrantyExpiry: input.warrantyExpiry,
       customFields: input.customFields,
       createdById: input.createdById,
+      tenantId: input.tenantId,
+      organizationId: input.organizationId || null,
     },
     include: {
       assignedTo: {
@@ -173,6 +183,31 @@ export async function listAssets(filters: ListAssetsFilters = {}) {
 
   const where: any = {
     deletedAt: null,
+  }
+
+  // Filter by organization - if user is not GLOBAL_ADMIN, filter by their organization
+  if (filters.userId && filters.userRoles) {
+    if (!filters.userRoles.includes('GLOBAL_ADMIN')) {
+      // Get user's organization
+      const user = await prisma.user.findUnique({
+        where: { id: filters.userId },
+        select: { organizationId: true },
+      })
+      if (user?.organizationId) {
+        where.organizationId = user.organizationId
+      } else {
+        // User has no organization, return empty
+        return { assets: [], total: 0, page, limit, totalPages: 0 }
+      }
+    }
+  }
+
+  if (filters.organizationId) {
+    where.organizationId = filters.organizationId
+  }
+
+  if (filters.tenantId) {
+    where.tenantId = filters.tenantId
   }
 
   if (filters.type) {

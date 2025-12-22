@@ -5,6 +5,8 @@ import {
   updateAsset,
   deleteAsset,
 } from '@/lib/services/asset-service'
+import { auditLog } from '@/lib/middleware/audit'
+import { AuditEventType } from '@prisma/client'
 import { z } from 'zod'
 import { AssetType, AssetStatus } from '@prisma/client'
 
@@ -96,12 +98,42 @@ export async function PUT(
     const validatedData = updateAssetSchema.parse(body)
 
     const { id } = await params
+
+    // Get old asset data for audit
+    const oldAsset = await getAssetById(id)
+
     const asset = await updateAsset(id, {
       ...validatedData,
       purchaseDate: validatedData.purchaseDate ? new Date(validatedData.purchaseDate) : undefined,
       warrantyExpiry: validatedData.warrantyExpiry ? new Date(validatedData.warrantyExpiry) : undefined,
       assignedToId: validatedData.assignedToId === null ? undefined : validatedData.assignedToId,
     })
+
+    // Log audit event for assignment changes
+    if (validatedData.assignedToId !== undefined && oldAsset && oldAsset.assignedToId !== validatedData.assignedToId) {
+      await auditLog(
+        AuditEventType.ASSET_ASSIGNED,
+        'Asset',
+        asset.id,
+        authContext.user.id,
+        authContext.user.email,
+        `Assigned asset ${asset.assetNumber} to ${validatedData.assignedToId || 'unassigned'}`,
+        { assetId: asset.id, assetNumber: asset.assetNumber, oldAssigneeId: oldAsset.assignedToId, newAssigneeId: validatedData.assignedToId },
+        request
+      )
+    } else {
+      // Log general update
+      await auditLog(
+        AuditEventType.ASSET_UPDATED,
+        'Asset',
+        asset.id,
+        authContext.user.id,
+        authContext.user.email,
+        `Updated asset: ${asset.assetNumber}`,
+        { assetId: asset.id, assetNumber: asset.assetNumber, changes: validatedData },
+        request
+      )
+    }
 
     return NextResponse.json(
       {
@@ -159,7 +191,25 @@ export async function DELETE(
     }
 
     const { id } = await params
+
+    // Get asset data for audit before deletion
+    const asset = await getAssetById(id)
+
     await deleteAsset(id)
+
+    // Log audit event
+    if (asset) {
+      await auditLog(
+        AuditEventType.ASSET_DELETED,
+        'Asset',
+        id,
+        authContext.user.id,
+        authContext.user.email,
+        `Deleted asset: ${asset.assetNumber}`,
+        { assetId: id, assetNumber: asset.assetNumber, name: asset.name },
+        request
+      )
+    }
 
     return NextResponse.json(
       {

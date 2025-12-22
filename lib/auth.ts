@@ -179,6 +179,13 @@ export async function getUserById(userId: string) {
           role: true,
         },
       },
+      organization: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+        },
+      },
     },
   })
 }

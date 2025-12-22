@@ -30,10 +30,41 @@ export interface ReportFilters {
   agentId?: string
   priority?: TicketPriority
   status?: TicketStatus
+  tenantId?: string
+  userId?: string // For filtering by user's tenant
+  userRoles?: string[] // User's roles
 }
 
 export async function getDashboardMetrics(filters?: ReportFilters): Promise<DashboardMetrics> {
   const where: any = {}
+
+  // Filter by tenant
+  if (filters?.userId && filters?.userRoles) {
+    if (!filters.userRoles.includes('ADMIN')) {
+      const user = await prisma.user.findUnique({
+        where: { id: filters.userId },
+        select: { tenantId: true },
+      })
+      if (user?.tenantId) {
+        where.tenantId = user.tenantId
+      } else {
+        return {
+          totalTickets: 0,
+          openTickets: 0,
+          resolvedTickets: 0,
+          closedTickets: 0,
+          averageResolutionTime: 0,
+          slaCompliance: 100,
+          ticketsByPriority: {} as any,
+          ticketsByStatus: {} as any,
+        }
+      }
+    }
+  }
+
+  if (filters?.tenantId) {
+    where.tenantId = filters.tenantId
+  }
 
   if (filters?.startDate || filters?.endDate) {
     where.createdAt = {}
@@ -290,6 +321,25 @@ export async function calculateMTTR(filters?: ReportFilters): Promise<number> {
     closedAt: { not: null },
   }
 
+  // Filter by tenant
+  if (filters?.userId && filters?.userRoles) {
+    if (!filters.userRoles.includes('ADMIN')) {
+      const user = await prisma.user.findUnique({
+        where: { id: filters.userId },
+        select: { tenantId: true },
+      })
+      if (user?.tenantId) {
+        where.tenantId = user.tenantId
+      } else {
+        return 0
+      }
+    }
+  }
+
+  if (filters?.tenantId) {
+    where.tenantId = filters.tenantId
+  }
+
   if (filters?.startDate || filters?.endDate) {
     where.createdAt = {}
     if (filters.startDate) where.createdAt.gte = filters.startDate
@@ -362,6 +412,26 @@ export async function exportAnalyticsToCSV(
 
   if (type === 'tickets') {
     const where: any = {}
+
+    // Filter by tenant
+    if (filters?.userId && filters?.userRoles) {
+      if (!filters.userRoles.includes('ADMIN')) {
+        const user = await prisma.user.findUnique({
+          where: { id: filters.userId },
+          select: { tenantId: true },
+        })
+        if (user?.tenantId) {
+          where.tenantId = user.tenantId
+        } else {
+          return 'Ticket Number,Subject,Status,Priority,Requester,Assignee,Created At,Closed At'
+        }
+      }
+    }
+
+    if (filters?.tenantId) {
+      where.tenantId = filters.tenantId
+    }
+
     if (filters?.startDate || filters?.endDate) {
       where.createdAt = {}
       if (filters.startDate) where.createdAt.gte = filters.startDate
@@ -396,7 +466,7 @@ export async function exportAnalyticsToCSV(
           `"${t.subject.replace(/"/g, '""')}"`,
           t.status,
           t.priority,
-          t.requester.email,
+          t.requester?.email || (t as any).requesterEmail || 'Unknown',
           t.assignee?.email || 'Unassigned',
           t.createdAt.toISOString(),
           t.closedAt?.toISOString() || '',

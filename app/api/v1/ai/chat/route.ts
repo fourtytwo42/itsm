@@ -12,6 +12,7 @@ const chatSchema = z.object({
       tool_call_id: z.string().optional(),
     })
   ),
+  tenantId: z.string().uuid().optional(),
 })
 
 export async function POST(request: NextRequest) {
@@ -23,6 +24,7 @@ export async function POST(request: NextRequest) {
     const result = await chatWithTools({
       messages: validatedData.messages,
       requesterId: authContext?.user.id,
+      tenantId: validatedData.tenantId,
     })
 
     return NextResponse.json(

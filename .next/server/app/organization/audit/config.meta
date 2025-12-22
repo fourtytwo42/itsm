@@ -1,0 +1,17 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/organization/layout,_N_T_/organization/audit/layout,_N_T_/organization/audit/config/layout,_N_T_/organization/audit/config/page,_N_T_/organization/audit/config"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/organization/audit/config/__PAGE__",
+    "/organization/audit/config",
+    "/organization/audit",
+    "/organization",
+    "/_index",
+    "/_head"
+  ]
+}

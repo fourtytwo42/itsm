@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import OrganizationContext from '@/components/OrganizationContext'
 
 interface Ticket {
   id: string
@@ -38,7 +39,8 @@ export default function TicketsPage() {
 
   return (
     <div className="container" style={{ padding: '2rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+      <OrganizationContext />
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', marginTop: '1rem' }}>
         <h1 style={{ fontSize: '2rem', fontWeight: 'bold' }}>Tickets</h1>
         <Link href="/tickets/new" className="btn btn-primary">
           New Ticket

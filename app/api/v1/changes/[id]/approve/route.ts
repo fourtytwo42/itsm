@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthContext, requireAuth } from '@/lib/middleware/auth'
-import { approveChange, createApproval } from '@/lib/services/change-service'
+import { approveChange, createApproval, getChangeRequestById } from '@/lib/services/change-service'
+import { auditLog } from '@/lib/middleware/audit'
+import { AuditEventType } from '@prisma/client'
 import { z } from 'zod'
 
 const approveChangeSchema = z.object({
@@ -57,10 +59,28 @@ export async function POST(
       )
     } else {
       const validatedData = approveChangeSchema.parse(body)
+
+      // Get change request for audit
+      const changeRequest = await getChangeRequestById(id)
+
       const approval = await approveChange({
         changeRequestId: id,
         ...validatedData,
       })
+
+      // Log audit event
+      if (changeRequest) {
+        await auditLog(
+          validatedData.approved ? AuditEventType.CHANGE_APPROVED : AuditEventType.CHANGE_REJECTED,
+          'ChangeRequest',
+          id,
+          authContext.user.id,
+          authContext.user.email,
+          `${validatedData.approved ? 'Approved' : 'Rejected'} change request: ${changeRequest.changeNumber}`,
+          { changeId: id, changeNumber: changeRequest.changeNumber, stage: validatedData.stage, approved: validatedData.approved },
+          request
+        )
+      }
 
       return NextResponse.json(
         {

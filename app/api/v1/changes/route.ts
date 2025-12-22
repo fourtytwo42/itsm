@@ -4,6 +4,8 @@ import {
   listChangeRequests,
   createChangeRequest,
 } from '@/lib/services/change-service'
+import { auditLog } from '@/lib/middleware/audit'
+import { AuditEventType } from '@prisma/client'
 import { z } from 'zod'
 import { ChangeType, ChangePriority, RiskLevel } from '@prisma/client'
 
@@ -40,6 +42,8 @@ export async function GET(request: NextRequest) {
       priority: priority || undefined,
       requestedBy: requestedBy || undefined,
       search: search || undefined,
+      userId: authContext.user.id,
+      userRoles: authContext.user.roles,
       page,
       limit,
       sort,
@@ -94,7 +98,20 @@ export async function POST(request: NextRequest) {
       plannedStartDate: validatedData.plannedStartDate ? new Date(validatedData.plannedStartDate) : undefined,
       plannedEndDate: validatedData.plannedEndDate ? new Date(validatedData.plannedEndDate) : undefined,
       requestedById: authContext.user.id,
+      organizationId: authContext.user.organizationId || undefined,
     })
+
+    // Log audit event
+    await auditLog(
+      AuditEventType.CHANGE_CREATED,
+      'ChangeRequest',
+      changeRequest.id,
+      authContext.user.id,
+      authContext.user.email,
+      `Created change request: ${changeRequest.changeNumber} - ${changeRequest.title}`,
+      { changeId: changeRequest.id, changeNumber: changeRequest.changeNumber, title: changeRequest.title, type: changeRequest.type },
+      request
+    )
 
     return NextResponse.json(
       {

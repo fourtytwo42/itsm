@@ -23,6 +23,8 @@ export async function GET(request: NextRequest) {
       endDate,
       priority: priority || undefined,
       status: status || undefined,
+      userId: authContext.user.id,
+      userRoles: authContext.user.roles,
     })
 
     return NextResponse.json(

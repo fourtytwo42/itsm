@@ -9,11 +9,19 @@ async function main() {
   // Create roles
   const roles = await Promise.all([
     prisma.role.upsert({
+      where: { name: RoleName.GLOBAL_ADMIN },
+      update: {},
+      create: {
+        name: RoleName.GLOBAL_ADMIN,
+        description: 'Global system administrator - can see and manage all organizations',
+      },
+    }),
+    prisma.role.upsert({
       where: { name: RoleName.ADMIN },
       update: {},
       create: {
         name: RoleName.ADMIN,
-        description: 'Full system access',
+        description: 'Organization administrator',
       },
     }),
     prisma.role.upsert({
@@ -55,17 +63,58 @@ async function main() {
   // Hash password for demo accounts
   const demoPasswordHash = await hashPassword('demo123')
 
-  // Create demo users
-  const admin = await prisma.user.upsert({
-    where: { email: 'admin@demo.com' },
+  // Create global admin user
+  const globalAdmin = await prisma.user.upsert({
+    where: { email: 'global@demo.com' },
     update: {},
     create: {
-      email: 'admin@demo.com',
+      email: 'global@demo.com',
       passwordHash: demoPasswordHash,
-      firstName: 'Admin',
-      lastName: 'User',
+      firstName: 'Global',
+      lastName: 'Admin',
       isActive: true,
       emailVerified: true,
+      roles: {
+        create: {
+          role: {
+            connect: { name: RoleName.GLOBAL_ADMIN },
+          },
+        },
+      },
+    },
+  })
+
+  console.log('Global admin created:', globalAdmin.email)
+
+  // Create organization
+  const organization = await prisma.organization.upsert({
+    where: { slug: 'demo-organization' },
+    update: {},
+    create: {
+      name: 'Demo Organization',
+      slug: 'demo-organization',
+      description: 'Demo organization for testing',
+      isActive: true,
+    },
+  })
+
+  console.log('Organization created:', organization.name)
+
+  // Create org admin (auto-created with organization)
+  const orgAdminEmail = `admin@${organization.slug}.demo`
+  const orgAdminPasswordHash = await hashPassword('demo123')
+  const orgAdmin = await prisma.user.upsert({
+    where: { email: orgAdminEmail },
+    update: {},
+    create: {
+      email: orgAdminEmail,
+      passwordHash: orgAdminPasswordHash,
+      firstName: 'Organization',
+      lastName: 'Admin',
+      isActive: true,
+      emailVerified: true,
+      mustChangePassword: false, // Set to true in production
+      organizationId: organization.id,
       roles: {
         create: {
           role: {
@@ -76,9 +125,13 @@ async function main() {
     },
   })
 
+  console.log('Org admin created:', orgAdmin.email)
+
   const manager = await prisma.user.upsert({
     where: { email: 'manager@demo.com' },
-    update: {},
+    update: {
+      organizationId: organization.id,
+    },
     create: {
       email: 'manager@demo.com',
       passwordHash: demoPasswordHash,
@@ -86,6 +139,7 @@ async function main() {
       lastName: 'Manager',
       isActive: true,
       emailVerified: true,
+      organizationId: organization.id,
       roles: {
         create: {
           role: {
@@ -96,9 +150,14 @@ async function main() {
     },
   })
 
+  console.log('IT Manager created:', manager.email)
+
+  // Create agent - independent, in organization
   const agent = await prisma.user.upsert({
     where: { email: 'agent@demo.com' },
-    update: {},
+    update: {
+      organizationId: organization.id,
+    },
     create: {
       email: 'agent@demo.com',
       passwordHash: demoPasswordHash,
@@ -106,6 +165,7 @@ async function main() {
       lastName: 'Agent',
       isActive: true,
       emailVerified: true,
+      organizationId: organization.id,
       roles: {
         create: {
           role: {
@@ -116,9 +176,14 @@ async function main() {
     },
   })
 
+  console.log('Agent created:', agent.email)
+
+  // Create end user in organization
   const user = await prisma.user.upsert({
     where: { email: 'user@demo.com' },
-    update: {},
+    update: {
+      organizationId: organization.id,
+    },
     create: {
       email: 'user@demo.com',
       passwordHash: demoPasswordHash,
@@ -126,6 +191,7 @@ async function main() {
       lastName: 'User',
       isActive: true,
       emailVerified: true,
+      organizationId: organization.id,
       roles: {
         create: {
           role: {
@@ -136,46 +202,143 @@ async function main() {
     },
   })
 
-  console.log('Demo users created:')
-  console.log('- Admin:', admin.email)
-  console.log('- Manager:', manager.email)
-  console.log('- Agent:', agent.email)
-  console.log('- User:', user.email)
+  console.log('End user created:', user.email)
 
-  // Create sample tickets
-  const tickets = await prisma.ticket.createMany({
-    data: [
-      {
-        ticketNumber: 'TKT-2025-0001',
-        subject: 'Laptop not booting',
-        description: 'The laptop hangs on boot screen.',
-        status: 'NEW',
-        priority: 'HIGH',
-        requesterId: user.id,
-        assigneeId: agent.id,
+  // Create demo tenant owned by organization
+  const demoTenant = await prisma.tenant.upsert({
+    where: { slug: 'demo-company' },
+    update: {
+      organizationId: organization.id,
+    },
+    create: {
+      name: 'Demo Company',
+      slug: 'demo-company',
+      description: 'Demo tenant for testing multi-tenant features',
+      organizationId: organization.id,
+      requiresLogin: false,
+      isActive: true,
+      categories: {
+        create: [
+          { category: 'IT Support' },
+          { category: 'HR' },
+          { category: 'Facilities' },
+        ],
       },
-      {
-        ticketNumber: 'TKT-2025-0002',
-        subject: 'VPN connection failing',
-        description: 'Cannot connect to corporate VPN from home.',
-        status: 'IN_PROGRESS',
-        priority: 'MEDIUM',
-        requesterId: user.id,
-        assigneeId: agent.id,
-      },
-      {
-        ticketNumber: 'TKT-2025-0003',
-        subject: 'Email not syncing on mobile',
-        description: 'Outlook app is not syncing emails.',
-        status: 'NEW',
-        priority: 'LOW',
-        requesterId: user.id,
-        assigneeId: manager.id,
-      },
-    ],
+    },
+    include: {
+      categories: true,
+    },
   })
 
-  console.log('Tickets created:', tickets.count)
+  console.log('Demo tenant created:', demoTenant.name, '(owned by organization:', organization.name + ')')
+
+  // Assign agent to tenant (all categories)
+  const existingAgentAssignment = await prisma.tenantAssignment.findFirst({
+    where: {
+      tenantId: demoTenant.id,
+      userId: agent.id,
+      category: null,
+    },
+  })
+
+  if (!existingAgentAssignment) {
+    await prisma.tenantAssignment.create({
+      data: {
+        tenantId: demoTenant.id,
+        userId: agent.id,
+        category: null, // All categories
+      },
+    })
+  }
+
+  // Assign end user to tenant (all categories)
+  const existingUserAssignment = await prisma.tenantAssignment.findFirst({
+    where: {
+      tenantId: demoTenant.id,
+      userId: user.id,
+      category: null,
+    },
+  })
+
+  if (!existingUserAssignment) {
+    await prisma.tenantAssignment.create({
+      data: {
+        tenantId: demoTenant.id,
+        userId: user.id,
+        category: null, // All categories
+      },
+    })
+  }
+
+  console.log('Tenant assignments created:')
+  console.log('- Agent assigned to tenant')
+  console.log('- End User assigned to tenant')
+
+  // Create sample tickets (associated with demo tenant)
+  const ticket1 = await prisma.ticket.upsert({
+    where: { ticketNumber: 'TKT-2025-0001' },
+    update: {
+      tenantId: demoTenant.id,
+      organizationId: organization.id,
+      category: 'IT Support',
+    },
+    create: {
+      ticketNumber: 'TKT-2025-0001',
+      subject: 'Laptop not booting',
+      description: 'The laptop hangs on boot screen.',
+      status: 'NEW',
+      priority: 'HIGH',
+      requesterId: user.id,
+      assigneeId: agent.id,
+      tenantId: demoTenant.id,
+      organizationId: organization.id,
+      category: 'IT Support',
+    },
+  })
+
+  const ticket2 = await prisma.ticket.upsert({
+    where: { ticketNumber: 'TKT-2025-0002' },
+    update: {
+      tenantId: demoTenant.id,
+      organizationId: organization.id,
+      category: 'IT Support',
+    },
+    create: {
+      ticketNumber: 'TKT-2025-0002',
+      subject: 'VPN connection failing',
+      description: 'Cannot connect to corporate VPN from home.',
+      status: 'IN_PROGRESS',
+      priority: 'MEDIUM',
+      requesterId: user.id,
+      assigneeId: agent.id,
+      tenantId: demoTenant.id,
+      organizationId: organization.id,
+      category: 'IT Support',
+    },
+  })
+
+  const ticket3 = await prisma.ticket.upsert({
+    where: { ticketNumber: 'TKT-2025-0003' },
+    update: {
+      tenantId: demoTenant.id,
+      organizationId: organization.id,
+      category: 'IT Support',
+    },
+    create: {
+      ticketNumber: 'TKT-2025-0003',
+      subject: 'Email not syncing on mobile',
+      description: 'Outlook app is not syncing emails.',
+      status: 'NEW',
+      priority: 'LOW',
+      requesterId: user.id,
+      assigneeId: manager.id,
+      tenantId: demoTenant.id,
+      organizationId: organization.id,
+      category: 'IT Support',
+    },
+  })
+
+  console.log('Tickets created/updated:', 3)
 
   // Email configuration seed
   await prisma.emailConfiguration.upsert({
@@ -194,32 +357,76 @@ async function main() {
     },
   })
 
-  // Knowledge base articles
-  await prisma.knowledgeBaseArticle.createMany({
-    data: [
-      {
-        slug: 'vpn-connection-failing',
-        title: 'VPN connection failing',
-        content: 'Check your internet connection and ensure VPN credentials are correct.',
-        status: 'PUBLISHED',
-        tags: ['vpn', 'network', 'remote'],
-      },
-      {
-        slug: 'email-not-syncing',
-        title: 'Email not syncing on mobile',
-        content: 'Remove and re-add the account, ensure IMAP is enabled.',
-        status: 'PUBLISHED',
-        tags: ['email', 'mobile', 'sync'],
-      },
-      {
-        slug: 'laptop-boot-issue',
-        title: 'Laptop not booting',
-        content: 'Boot into safe mode, run disk check, and ensure BIOS settings are correct.',
-        status: 'PUBLISHED',
-        tags: ['laptop', 'boot', 'hardware'],
-      },
-    ],
+  // Knowledge base articles (associated with demo tenant)
+  const kbArticle1 = await prisma.knowledgeBaseArticle.upsert({
+    where: { slug: 'vpn-connection-failing' },
+    update: {
+      tenantId: demoTenant.id,
+      organizationId: organization.id,
+    },
+    create: {
+      slug: 'vpn-connection-failing',
+      title: 'VPN connection failing',
+      content: 'Check your internet connection and ensure VPN credentials are correct.',
+      status: 'PUBLISHED',
+      tags: ['vpn', 'network', 'remote'],
+      tenantId: demoTenant.id,
+      organizationId: organization.id,
+    },
   })
+
+  const kbArticle2 = await prisma.knowledgeBaseArticle.upsert({
+    where: { slug: 'email-not-syncing' },
+    update: {
+      tenantId: demoTenant.id,
+      organizationId: organization.id,
+    },
+    create: {
+      slug: 'email-not-syncing',
+      title: 'Email not syncing on mobile',
+      content: 'Remove and re-add the account, ensure IMAP is enabled.',
+      status: 'PUBLISHED',
+      tags: ['email', 'mobile', 'sync'],
+      tenantId: demoTenant.id,
+    },
+  })
+
+  const kbArticle3 = await prisma.knowledgeBaseArticle.upsert({
+    where: { slug: 'laptop-boot-issue' },
+    update: {
+      tenantId: demoTenant.id,
+    },
+    create: {
+      slug: 'laptop-boot-issue',
+      title: 'Laptop not booting',
+      content: 'Boot into safe mode, run disk check, and ensure BIOS settings are correct.',
+      status: 'PUBLISHED',
+      tags: ['laptop', 'boot', 'hardware'],
+      tenantId: demoTenant.id,
+    },
+  })
+
+  // Link KB articles to tenant
+  const articles = [kbArticle1, kbArticle2, kbArticle3]
+  for (const article of articles) {
+    const existingLink = await prisma.tenantKBArticle.findFirst({
+      where: {
+        tenantId: demoTenant.id,
+        articleId: article.id,
+      },
+    })
+
+    if (!existingLink) {
+      await prisma.tenantKBArticle.create({
+        data: {
+          tenantId: demoTenant.id,
+          articleId: article.id,
+        },
+      })
+    }
+  }
+
+  console.log('KB articles created/updated and linked to tenant:', articles.length)
 
   console.log('Seeding completed!')
 }

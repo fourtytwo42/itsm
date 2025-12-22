@@ -1,0 +1,17 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/global/layout,_N_T_/global/organizations/layout,_N_T_/global/organizations/new/layout,_N_T_/global/organizations/new/page,_N_T_/global/organizations/new"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/global/organizations/new/__PAGE__",
+    "/global/organizations/new",
+    "/global/organizations",
+    "/global",
+    "/_index",
+    "/_head"
+  ]
+}

@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import OrganizationContext from '@/components/OrganizationContext'
 
 interface Article {
   id: string
@@ -54,7 +55,8 @@ export default function KnowledgeBasePage() {
 
   return (
     <div className="container" style={{ padding: '2rem', display: 'grid', gap: '1.5rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <OrganizationContext />
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem' }}>
         <h1 style={{ fontSize: '2rem', fontWeight: 'bold' }}>Knowledge Base</h1>
       </div>
 

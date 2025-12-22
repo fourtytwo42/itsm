@@ -40,6 +40,8 @@ export async function GET(request: NextRequest) {
         agentId,
         priority: priority || undefined,
         status: status || undefined,
+        userId: authContext.user.id,
+        userRoles: authContext.user.roles,
       })
 
       return new NextResponse(csv, {

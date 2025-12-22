@@ -93,10 +93,10 @@ async function callGroq(payload: any): Promise<GroqResponse> {
   return res.json()
 }
 
-async function handleToolCall(toolCall: GroqToolCall, requesterId?: string) {
+async function handleToolCall(toolCall: GroqToolCall, requesterId?: string, tenantId?: string) {
   const args = JSON.parse(toolCall.function.arguments || '{}')
   if (toolCall.function.name === 'search_knowledge_base') {
-    const results = await searchArticles(args.query ?? '')
+    const results = await searchArticles(args.query ?? '', tenantId)
     return {
       tool_call_id: toolCall.id,
       role: 'tool' as const,
@@ -129,6 +129,7 @@ async function handleToolCall(toolCall: GroqToolCall, requesterId?: string) {
 export async function chatWithTools(params: {
   messages: ChatMessage[]
   requesterId?: string
+  tenantId?: string
 }) {
   // Step 1: Ask Groq with tool definitions
   const initial = await callGroq({
@@ -150,7 +151,7 @@ export async function chatWithTools(params: {
 
   // Handle only the first tool call for simplicity
   const toolCall = first.tool_calls[0]
-  const toolResult = await handleToolCall(toolCall, params.requesterId)
+  const toolResult = await handleToolCall(toolCall, params.requesterId, params.tenantId)
 
   // Step 2: Send tool result back for final answer
   const followup = await callGroq({

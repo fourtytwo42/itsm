@@ -6,12 +6,34 @@ import Image from 'next/image'
 export default function LandingPage() {
   const router = useRouter()
 
-  const handleDemoClick = () => {
-    router.push('/login')
+  const handleDemoClick = (e?: React.MouseEvent<HTMLButtonElement>) => {
+    e?.preventDefault()
+    e?.stopPropagation()
+    try {
+      router.push('/login')
+    } catch (error) {
+      console.error('Navigation error:', error)
+      window.location.href = '/login'
+    }
   }
 
-  const handleContactClick = () => {
-    window.open('https://studio42.dev/contact?source=itsm', '_blank')
+  const handleContactClick = (e?: React.MouseEvent<HTMLButtonElement>) => {
+    e?.preventDefault()
+    e?.stopPropagation()
+    try {
+      window.open('https://studio42.dev/contact?source=itsm', '_blank')
+    } catch (error) {
+      console.error('Contact link error:', error)
+    }
+  }
+
+  const handleGetStarted = (plan: string) => {
+    try {
+      router.push(`/checkout?plan=${plan}`)
+    } catch (error) {
+      console.error('Navigation error:', error)
+      window.location.href = `/checkout?plan=${plan}`
+    }
   }
 
   return (
@@ -40,7 +62,8 @@ export default function LandingPage() {
           </div>
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
             <button
-              onClick={handleDemoClick}
+              type="button"
+              onClick={(e) => handleDemoClick(e)}
               style={{
                 padding: '0.5rem 1.5rem',
                 backgroundColor: 'transparent',
@@ -63,7 +86,8 @@ export default function LandingPage() {
               View Demo
             </button>
             <button
-              onClick={handleContactClick}
+              type="button"
+              onClick={(e) => handleContactClick(e)}
               style={{
                 padding: '0.5rem 1.5rem',
                 backgroundColor: '#3b82f6',
@@ -121,7 +145,8 @@ export default function LandingPage() {
           </p>
           <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
             <button
-              onClick={handleDemoClick}
+              type="button"
+              onClick={(e) => handleDemoClick(e)}
               style={{
                 padding: '1rem 2.5rem',
                 backgroundColor: '#3b82f6',
@@ -148,7 +173,8 @@ export default function LandingPage() {
               Try Demo
             </button>
             <button
-              onClick={handleContactClick}
+              type="button"
+              onClick={(e) => handleContactClick(e)}
               style={{
                 padding: '1rem 2.5rem',
                 backgroundColor: 'transparent',
@@ -288,6 +314,264 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Pricing Section */}
+      <section style={{
+        padding: '6rem 2rem',
+        backgroundColor: '#0f0f0f',
+        position: 'relative',
+        overflow: 'hidden',
+      }}>
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'radial-gradient(circle at 50% 50%, rgba(59, 130, 246, 0.1) 0%, transparent 70%)',
+          pointerEvents: 'none',
+        }} />
+        <div style={{ maxWidth: '1200px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+          <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
+            <h2 style={{
+              fontSize: 'clamp(2rem, 4vw, 3rem)',
+              fontWeight: 'bold',
+              marginBottom: '1rem',
+              background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+            }}>
+              Simple, Transparent Pricing
+            </h2>
+            <p style={{
+              fontSize: '1.25rem',
+              color: 'rgba(255, 255, 255, 0.7)',
+              maxWidth: '600px',
+              margin: '0 auto',
+            }}>
+              One-time purchase. Self-hosted. Full control. No monthly fees.
+            </p>
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+            gap: '2rem',
+            marginTop: '3rem',
+          }}>
+            {[
+              {
+                name: 'Starter',
+                price: '$2,999',
+                description: 'Perfect for small teams',
+                features: [
+                  'Up to 25 users',
+                  'Unlimited tickets',
+                  'AI-powered ticketing',
+                  'Knowledge base',
+                  'Asset management',
+                  'Basic analytics',
+                  'Email support',
+                  'Self-hosted deployment',
+                ],
+                popular: false,
+              },
+              {
+                name: 'Professional',
+                price: '$7,999',
+                description: 'For growing organizations',
+                features: [
+                  'Up to 100 users',
+                  'Everything in Starter',
+                  'Advanced analytics',
+                  'Custom roles & escalation',
+                  'Multi-tenant support',
+                  'Priority email support',
+                  'Advanced reporting',
+                  'API access',
+                ],
+                popular: true,
+              },
+              {
+                name: 'Enterprise',
+                price: '$19,999',
+                description: 'For large organizations',
+                features: [
+                  'Unlimited users',
+                  'Everything in Professional',
+                  'Dedicated support',
+                  'Custom integrations',
+                  'On-premise deployment',
+                  'SLA guarantees',
+                  'Training & onboarding',
+                  'Custom development',
+                ],
+                popular: false,
+              },
+            ].map((plan, index) => (
+              <div
+                key={index}
+                style={{
+                  backgroundColor: plan.popular ? 'linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%)' : '#1a1a1a',
+                  background: plan.popular 
+                    ? 'linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(139, 92, 246, 0.15) 100%)'
+                    : '#1a1a1a',
+                  border: plan.popular 
+                    ? '2px solid rgba(59, 130, 246, 0.5)'
+                    : '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '1.5rem',
+                  padding: '2.5rem',
+                  position: 'relative',
+                  transition: 'all 0.3s ease',
+                  transform: plan.popular ? 'scale(1.05)' : 'scale(1)',
+                  cursor: 'pointer',
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.transform = plan.popular ? 'scale(1.08)' : 'scale(1.03)'
+                  e.currentTarget.style.boxShadow = '0 20px 60px rgba(59, 130, 246, 0.3)'
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.transform = plan.popular ? 'scale(1.05)' : 'scale(1)'
+                  e.currentTarget.style.boxShadow = 'none'
+                }}
+              >
+                {plan.popular && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '-12px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    backgroundColor: '#3b82f6',
+                    color: '#ffffff',
+                    padding: '0.5rem 1.5rem',
+                    borderRadius: '2rem',
+                    fontSize: '0.875rem',
+                    fontWeight: '600',
+                    boxShadow: '0 4px 14px rgba(59, 130, 246, 0.4)',
+                  }}>
+                    Most Popular
+                  </div>
+                )}
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <h3 style={{
+                    fontSize: '1.5rem',
+                    fontWeight: 'bold',
+                    marginBottom: '0.5rem',
+                    color: '#ffffff',
+                  }}>
+                    {plan.name}
+                  </h3>
+                  <p style={{
+                    color: 'rgba(255, 255, 255, 0.6)',
+                    fontSize: '0.875rem',
+                    marginBottom: '1rem',
+                  }}>
+                    {plan.description}
+                  </p>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'baseline',
+                    gap: '0.5rem',
+                    marginBottom: '1rem',
+                  }}>
+                    <span style={{
+                      fontSize: '3rem',
+                      fontWeight: 'bold',
+                      background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                      backgroundClip: 'text',
+                    }}>
+                      {plan.price}
+                    </span>
+                    <span style={{
+                      color: 'rgba(255, 255, 255, 0.6)',
+                      fontSize: '1rem',
+                    }}>
+                      one-time
+                    </span>
+                  </div>
+                </div>
+                <ul style={{
+                  listStyle: 'none',
+                  padding: 0,
+                  margin: '0 0 2rem 0',
+                }}>
+                  {plan.features.map((feature, idx) => (
+                    <li key={idx} style={{
+                      padding: '0.75rem 0',
+                      borderBottom: idx < plan.features.length - 1 ? '1px solid rgba(255, 255, 255, 0.1)' : 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.75rem',
+                    }}>
+                      <svg
+                        width="20"
+                        height="20"
+                        viewBox="0 0 20 20"
+                        fill="none"
+                        style={{ flexShrink: 0 }}
+                      >
+                        <circle cx="10" cy="10" r="10" fill="#10b981" opacity="0.2" />
+                        <path
+                          d="M6 10l2 2 6-6"
+                          stroke="#10b981"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                      <span style={{ color: 'rgba(255, 255, 255, 0.9)' }}>{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e?.preventDefault()
+                    e?.stopPropagation()
+                    handleGetStarted(plan.name.toLowerCase())
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '1rem 2rem',
+                    backgroundColor: plan.popular ? '#3b82f6' : 'transparent',
+                    border: plan.popular ? 'none' : '1px solid rgba(255, 255, 255, 0.3)',
+                    borderRadius: '0.75rem',
+                    color: '#ffffff',
+                    cursor: 'pointer',
+                    fontSize: '1rem',
+                    fontWeight: '600',
+                    transition: 'all 0.2s',
+                    boxShadow: plan.popular ? '0 4px 14px rgba(59, 130, 246, 0.4)' : 'none',
+                  }}
+                  onMouseOver={(e) => {
+                    if (plan.popular) {
+                      e.currentTarget.style.backgroundColor = '#2563eb'
+                      e.currentTarget.style.boxShadow = '0 6px 20px rgba(59, 130, 246, 0.5)'
+                    } else {
+                      e.currentTarget.style.borderColor = '#3b82f6'
+                      e.currentTarget.style.color = '#3b82f6'
+                    }
+                  }}
+                  onMouseOut={(e) => {
+                    if (plan.popular) {
+                      e.currentTarget.style.backgroundColor = '#3b82f6'
+                      e.currentTarget.style.boxShadow = '0 4px 14px rgba(59, 130, 246, 0.4)'
+                    } else {
+                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)'
+                      e.currentTarget.style.color = '#ffffff'
+                    }
+                  }}
+                >
+                  Get Started
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Stats Section */}
       <section style={{
         padding: '6rem 2rem',
@@ -354,7 +638,8 @@ export default function LandingPage() {
           </p>
           <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
             <button
-              onClick={handleDemoClick}
+              type="button"
+              onClick={(e) => handleDemoClick(e)}
               style={{
                 padding: '1rem 2.5rem',
                 backgroundColor: '#3b82f6',
@@ -379,7 +664,8 @@ export default function LandingPage() {
               Try Free Demo
             </button>
             <button
-              onClick={handleContactClick}
+              type="button"
+              onClick={(e) => handleContactClick(e)}
               style={{
                 padding: '1rem 2.5rem',
                 backgroundColor: 'transparent',
@@ -436,7 +722,8 @@ export default function LandingPage() {
             flexWrap: 'wrap',
           }}>
             <button
-              onClick={handleDemoClick}
+              type="button"
+              onClick={(e) => handleDemoClick(e)}
               style={{
                 background: 'none',
                 border: 'none',
@@ -448,7 +735,8 @@ export default function LandingPage() {
               Demo
             </button>
             <button
-              onClick={handleContactClick}
+              type="button"
+              onClick={(e) => handleContactClick(e)}
               style={{
                 background: 'none',
                 border: 'none',

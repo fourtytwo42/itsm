@@ -113,7 +113,6 @@ async function main() {
       lastName: 'Admin',
       isActive: true,
       emailVerified: true,
-      mustChangePassword: false, // Set to true in production
       organizationId: organization.id,
       roles: {
         create: {

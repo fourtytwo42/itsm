@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import OrganizationContext from '@/components/OrganizationContext'
 import { DocumentDuplicateIcon, CheckIcon } from '@heroicons/react/24/outline'
 
 interface Tenant {
@@ -132,7 +131,6 @@ export default function TenantsPage() {
 
   return (
     <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
-      <OrganizationContext />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', marginTop: '1rem' }}>
         <h1 style={{ fontSize: '2rem', margin: 0 }}>Tenant Management</h1>
         <button

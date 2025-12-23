@@ -484,6 +484,7 @@ export async function canManageTenant(userId: string, tenantId: string): Promise
       roles: {
         include: {
           role: true,
+          customRole: true,
         },
       },
     },
@@ -493,7 +494,7 @@ export async function canManageTenant(userId: string, tenantId: string): Promise
     return false
   }
 
-  const isGlobalAdmin = user.roles.some((ur) => ur.role.name === 'GLOBAL_ADMIN')
+  const isGlobalAdmin = user.roles.some((ur) => ur.role?.name === 'GLOBAL_ADMIN')
   if (isGlobalAdmin) {
     return true
   }

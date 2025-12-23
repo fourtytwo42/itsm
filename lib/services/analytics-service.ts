@@ -7,7 +7,6 @@ export interface DashboardMetrics {
   resolvedTickets: number
   closedTickets: number
   averageResolutionTime: number // minutes
-  slaCompliance: number // percentage
   ticketsByPriority: Record<TicketPriority, number>
   ticketsByStatus: Record<TicketStatus, number>
   ticketsByDay?: Array<{ date: string; count: number }>
@@ -20,7 +19,6 @@ export interface AgentPerformance {
   ticketsResolved: number
   ticketsAssigned: number
   averageResolutionTime: number // minutes
-  slaCompliance: number // percentage
   firstResponseTime: number // minutes average
 }
 
@@ -31,6 +29,7 @@ export interface ReportFilters {
   priority?: TicketPriority
   status?: TicketStatus
   tenantId?: string
+  organizationId?: string
   userId?: string // For filtering by user's tenant
   userRoles?: string[] // User's roles
 }
@@ -38,28 +37,33 @@ export interface ReportFilters {
 export async function getDashboardMetrics(filters?: ReportFilters): Promise<DashboardMetrics> {
   const where: any = {}
 
-  // Filter by tenant
+  // Filter by organization - if user is not GLOBAL_ADMIN, filter by their organization
   if (filters?.userId && filters?.userRoles) {
-    if (!filters.userRoles.includes('ADMIN')) {
+    if (!filters.userRoles.includes('GLOBAL_ADMIN')) {
+      // Get user's organization
       const user = await prisma.user.findUnique({
         where: { id: filters.userId },
-        select: { tenantId: true },
+        select: { organizationId: true },
       })
-      if (user?.tenantId) {
-        where.tenantId = user.tenantId
+      if (user?.organizationId) {
+        where.organizationId = user.organizationId
       } else {
+        // User has no organization, return empty metrics
         return {
           totalTickets: 0,
           openTickets: 0,
           resolvedTickets: 0,
           closedTickets: 0,
           averageResolutionTime: 0,
-          slaCompliance: 100,
           ticketsByPriority: {} as any,
           ticketsByStatus: {} as any,
         }
       }
     }
+  }
+
+  if (filters?.organizationId) {
+    where.organizationId = filters.organizationId
   }
 
   if (filters?.tenantId) {
@@ -88,7 +92,6 @@ export async function getDashboardMetrics(filters?: ReportFilters): Promise<Dash
     ticketsByPriority,
     ticketsByStatus,
     resolvedTicketsWithTime,
-    slaTracking,
   ] = await Promise.all([
     prisma.ticket.count({ where }),
     prisma.ticket.count({
@@ -131,20 +134,6 @@ export async function getDashboardMetrics(filters?: ReportFilters): Promise<Dash
         closedAt: true,
       },
     }),
-    prisma.sLATracking.findMany({
-      where: filters?.startDate || filters?.endDate
-        ? {
-            createdAt: {
-              ...(filters.startDate && { gte: filters.startDate }),
-              ...(filters.endDate && { lte: filters.endDate }),
-            },
-          }
-        : {},
-      select: {
-        firstResponseBreached: true,
-        resolutionBreached: true,
-      },
-    }),
   ])
 
   // Calculate average resolution time
@@ -160,13 +149,6 @@ export async function getDashboardMetrics(filters?: ReportFilters): Promise<Dash
     averageResolutionTime = totalMinutes / resolvedTicketsWithTime.length
   }
 
-  // Calculate SLA compliance
-  let slaCompliance = 100
-  if (slaTracking.length > 0) {
-    const totalBreaches =
-      slaTracking.filter((t) => t.firstResponseBreached || t.resolutionBreached).length
-    slaCompliance = ((slaTracking.length - totalBreaches) / slaTracking.length) * 100
-  }
 
   // Build tickets by priority
   const priorityCounts: Record<TicketPriority, number> = {
@@ -196,7 +178,6 @@ export async function getDashboardMetrics(filters?: ReportFilters): Promise<Dash
     resolvedTickets,
     closedTickets,
     averageResolutionTime: Math.round(averageResolutionTime),
-    slaCompliance: Math.round(slaCompliance * 100) / 100,
     ticketsByPriority: priorityCounts,
     ticketsByStatus: statusCounts,
   }
@@ -205,6 +186,27 @@ export async function getDashboardMetrics(filters?: ReportFilters): Promise<Dash
 export async function getAgentPerformance(filters?: ReportFilters): Promise<AgentPerformance[]> {
   const where: any = {
     assigneeId: { not: null },
+  }
+
+  // Filter by organization - if user is not GLOBAL_ADMIN, filter by their organization
+  if (filters?.userId && filters?.userRoles) {
+    if (!filters.userRoles.includes('GLOBAL_ADMIN')) {
+      const user = await prisma.user.findUnique({
+        where: { id: filters.userId },
+        select: { organizationId: true },
+      })
+      if (user?.organizationId) {
+        where.organizationId = user.organizationId
+      }
+    }
+  }
+
+  if (filters?.organizationId) {
+    where.organizationId = filters.organizationId
+  }
+
+  if (filters?.tenantId) {
+    where.tenantId = filters.tenantId
   }
 
   if (filters?.startDate || filters?.endDate) {
@@ -228,15 +230,14 @@ export async function getAgentPerformance(filters?: ReportFilters): Promise<Agen
           lastName: true,
         },
       },
-      slaTracking: {
+      comments: {
         select: {
-          firstResponseActual: true,
-          firstResponseTarget: true,
-          resolutionActual: true,
-          resolutionTarget: true,
-          firstResponseBreached: true,
-          resolutionBreached: true,
+          createdAt: true,
         },
+        orderBy: {
+          createdAt: 'asc',
+        },
+        take: 1,
       },
     },
   })
@@ -256,7 +257,6 @@ export async function getAgentPerformance(filters?: ReportFilters): Promise<Agen
         ticketsResolved: 0,
         ticketsAssigned: 0,
         averageResolutionTime: 0,
-        slaCompliance: 100,
         firstResponseTime: 0,
       })
     }
@@ -274,42 +274,25 @@ export async function getAgentPerformance(filters?: ReportFilters): Promise<Agen
       }
     }
 
-    // Calculate first response time from SLA tracking
-    if (ticket.slaTracking?.firstResponseActual && ticket.slaTracking?.firstResponseTarget) {
+    // Calculate first response time from first comment
+    if (ticket.comments && ticket.comments.length > 0 && ticket.createdAt) {
+      const firstComment = ticket.comments[0]
       const firstResponseTime =
-        (ticket.slaTracking.firstResponseActual.getTime() - ticket.createdAt.getTime()) / (1000 * 60)
-      agent.firstResponseTime =
-        (agent.firstResponseTime * (agent.ticketsAssigned - 1) + firstResponseTime) / agent.ticketsAssigned
-    }
-
-    // Calculate SLA compliance
-    if (ticket.slaTracking) {
-      const totalTickets = agent.ticketsAssigned
-      const breaches = (agent.ticketsResolved - agent.ticketsResolved) + // Previous breaches
-        (ticket.slaTracking.firstResponseBreached || ticket.slaTracking.resolutionBreached ? 1 : 0)
-      agent.slaCompliance = totalTickets > 0 ? ((totalTickets - breaches) / totalTickets) * 100 : 100
+        (firstComment.createdAt.getTime() - ticket.createdAt.getTime()) / (1000 * 60)
+      if (agent.firstResponseTime === 0) {
+        agent.firstResponseTime = firstResponseTime
+      } else {
+        agent.firstResponseTime =
+          (agent.firstResponseTime * (agent.ticketsAssigned - 1) + firstResponseTime) / agent.ticketsAssigned
+      }
     }
   })
 
-  // Calculate final SLA compliance for each agent
+  // Calculate final metrics for each agent
   const agents = Array.from(agentMap.values())
   for (const agent of agents) {
-    const agentTickets = tickets.filter((t) => t.assigneeId === agent.id)
-    const slaTrackings = agentTickets
-      .map((t) => t.slaTracking)
-      .filter((t) => t !== null) as Array<{
-      firstResponseBreached: boolean
-      resolutionBreached: boolean
-    }>
-
-    if (slaTrackings.length > 0) {
-      const breaches = slaTrackings.filter((t) => t.firstResponseBreached || t.resolutionBreached).length
-      agent.slaCompliance = ((slaTrackings.length - breaches) / slaTrackings.length) * 100
-    }
-
     agent.averageResolutionTime = Math.round(agent.averageResolutionTime)
     agent.firstResponseTime = Math.round(agent.firstResponseTime)
-    agent.slaCompliance = Math.round(agent.slaCompliance * 100) / 100
   }
 
   return agents.sort((a, b) => b.ticketsResolved - a.ticketsResolved)
@@ -321,19 +304,23 @@ export async function calculateMTTR(filters?: ReportFilters): Promise<number> {
     closedAt: { not: null },
   }
 
-  // Filter by tenant
+  // Filter by organization - if user is not GLOBAL_ADMIN, filter by their organization
   if (filters?.userId && filters?.userRoles) {
-    if (!filters.userRoles.includes('ADMIN')) {
+    if (!filters.userRoles.includes('GLOBAL_ADMIN')) {
       const user = await prisma.user.findUnique({
         where: { id: filters.userId },
-        select: { tenantId: true },
+        select: { organizationId: true },
       })
-      if (user?.tenantId) {
-        where.tenantId = user.tenantId
+      if (user?.organizationId) {
+        where.organizationId = user.organizationId
       } else {
         return 0
       }
     }
+  }
+
+  if (filters?.organizationId) {
+    where.organizationId = filters.organizationId
   }
 
   if (filters?.tenantId) {
@@ -405,7 +392,7 @@ export async function getTicketVolumeByDay(filters?: ReportFilters): Promise<Arr
 }
 
 export async function exportAnalyticsToCSV(
-  type: 'tickets' | 'agents' | 'sla',
+  type: 'tickets' | 'agents',
   filters?: ReportFilters
 ): Promise<string> {
   let csvData = ''
@@ -413,19 +400,23 @@ export async function exportAnalyticsToCSV(
   if (type === 'tickets') {
     const where: any = {}
 
-    // Filter by tenant
+    // Filter by organization - if user is not GLOBAL_ADMIN, filter by their organization
     if (filters?.userId && filters?.userRoles) {
-      if (!filters.userRoles.includes('ADMIN')) {
+      if (!filters.userRoles.includes('GLOBAL_ADMIN')) {
         const user = await prisma.user.findUnique({
           where: { id: filters.userId },
-          select: { tenantId: true },
+          select: { organizationId: true },
         })
-        if (user?.tenantId) {
-          where.tenantId = user.tenantId
+        if (user?.organizationId) {
+          where.organizationId = user.organizationId
         } else {
           return 'Ticket Number,Subject,Status,Priority,Requester,Assignee,Created At,Closed At'
         }
       }
+    }
+
+    if (filters?.organizationId) {
+      where.organizationId = filters.organizationId
     }
 
     if (filters?.tenantId) {
@@ -476,7 +467,7 @@ export async function exportAnalyticsToCSV(
   } else if (type === 'agents') {
     const agents = await getAgentPerformance(filters)
     csvData = [
-      'Agent Name,Email,Tickets Resolved,Tickets Assigned,Average Resolution Time (min),SLA Compliance (%)',
+      'Agent Name,Email,Tickets Resolved,Tickets Assigned,Average Resolution Time (min),Average First Response Time (min)',
       ...agents.map((a) =>
         [
           `"${a.name.replace(/"/g, '""')}"`,
@@ -484,49 +475,7 @@ export async function exportAnalyticsToCSV(
           a.ticketsResolved,
           a.ticketsAssigned,
           a.averageResolutionTime,
-          a.slaCompliance,
-        ].join(',')
-      ),
-    ].join('\n')
-  } else if (type === 'sla') {
-    const where: any = {}
-    if (filters?.startDate || filters?.endDate) {
-      where.createdAt = {}
-      if (filters.startDate) where.createdAt.gte = filters.startDate
-      if (filters.endDate) where.createdAt.lte = filters.endDate
-    }
-
-    const tracking = await prisma.sLATracking.findMany({
-      where,
-      include: {
-        ticket: {
-          select: {
-            ticketNumber: true,
-            subject: true,
-          },
-        },
-        slaPolicy: {
-          select: {
-            name: true,
-            priority: true,
-          },
-        },
-      },
-    })
-
-    csvData = [
-      'Ticket Number,Subject,SLA Policy,First Response Target,First Response Actual,First Response Breached,Resolution Target,Resolution Actual,Resolution Breached',
-      ...tracking.map((t) =>
-        [
-          t.ticket.ticketNumber,
-          `"${t.ticket.subject.replace(/"/g, '""')}"`,
-          t.slaPolicy.name,
-          t.firstResponseTarget?.toISOString() || '',
-          t.firstResponseActual?.toISOString() || '',
-          t.firstResponseBreached ? 'Yes' : 'No',
-          t.resolutionTarget?.toISOString() || '',
-          t.resolutionActual?.toISOString() || '',
-          t.resolutionBreached ? 'Yes' : 'No',
+          a.firstResponseTime,
         ].join(',')
       ),
     ].join('\n')

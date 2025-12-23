@@ -85,8 +85,9 @@ export default function TopHeader() {
     fetchOrganization()
   }, [pathname])
 
-  // Don't show header on login/register/landing pages
-  if (pathname === '/' || pathname === '/login' || pathname === '/register' || pathname?.startsWith('/reset-password')) {
+  // Don't show header on login/register/landing/checkout pages
+  // Handle null/undefined pathname during navigation
+  if (!pathname || pathname === '/' || pathname === '/login' || pathname === '/register' || pathname === '/checkout' || pathname.startsWith('/reset-password')) {
     return null
   }
 

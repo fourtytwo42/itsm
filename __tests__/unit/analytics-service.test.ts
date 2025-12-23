@@ -5,25 +5,38 @@ import {
   getTicketVolumeByDay,
   exportAnalyticsToCSV,
 } from '@/lib/services/analytics-service'
-import { prisma } from '@/lib/prisma'
 import { TicketStatus, TicketPriority } from '@prisma/client'
 
+const mockTicket = {
+  count: jest.fn(),
+  findMany: jest.fn(),
+  groupBy: jest.fn(),
+}
+const mockUser = {
+  findUnique: jest.fn(),
+}
+
+const mockPrisma = {
+  ticket: mockTicket,
+  user: mockUser,
+}
+
 jest.mock('@/lib/prisma', () => ({
-  prisma: {
-    ticket: {
-      count: jest.fn(),
-      findMany: jest.fn(),
-      groupBy: jest.fn(),
-    },
-    sLATracking: {
-      findMany: jest.fn(),
-    },
+  __esModule: true,
+  get default() {
+    return mockPrisma
   },
 }))
+
+const prisma = mockPrisma as any
 
 describe('Analytics Service', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    ;(prisma.user.findUnique as jest.Mock).mockResolvedValue({
+      id: 'user-1',
+      organizationId: 'org-1',
+    })
   })
 
   describe('getDashboardMetrics', () => {
@@ -59,11 +72,6 @@ describe('Analytics Service', () => {
         },
       ])
 
-      ;(prisma.sLATracking.findMany as jest.Mock).mockResolvedValue([
-        { firstResponseBreached: false, resolutionBreached: false },
-        { firstResponseBreached: true, resolutionBreached: false },
-      ])
-
       const result = await getDashboardMetrics()
 
       expect(result.totalTickets).toBe(100)
@@ -71,7 +79,6 @@ describe('Analytics Service', () => {
       expect(result.resolvedTickets).toBe(70)
       expect(result.closedTickets).toBe(5)
       expect(result.averageResolutionTime).toBeGreaterThan(0)
-      expect(result.slaCompliance).toBe(50)
       expect(result.ticketsByPriority.LOW).toBe(30)
       expect(result.ticketsByStatus.NEW).toBe(10)
     })
@@ -83,7 +90,6 @@ describe('Analytics Service', () => {
       ;(prisma.ticket.count as jest.Mock).mockResolvedValue(0)
       ;(prisma.ticket.groupBy as jest.Mock).mockResolvedValue([])
       ;(prisma.ticket.findMany as jest.Mock).mockResolvedValue([])
-      ;(prisma.sLATracking.findMany as jest.Mock).mockResolvedValue([])
 
       await getDashboardMetrics({ startDate, endDate })
 
@@ -103,7 +109,6 @@ describe('Analytics Service', () => {
       ;(prisma.ticket.count as jest.Mock).mockResolvedValue(0)
       ;(prisma.ticket.groupBy as jest.Mock).mockResolvedValue([])
       ;(prisma.ticket.findMany as jest.Mock).mockResolvedValue([])
-      ;(prisma.sLATracking.findMany as jest.Mock).mockResolvedValue([])
 
       await getDashboardMetrics({
         priority: TicketPriority.HIGH,
@@ -124,7 +129,6 @@ describe('Analytics Service', () => {
       ;(prisma.ticket.count as jest.Mock).mockResolvedValue(0)
       ;(prisma.ticket.groupBy as jest.Mock).mockResolvedValue([])
       ;(prisma.ticket.findMany as jest.Mock).mockResolvedValue([])
-      ;(prisma.sLATracking.findMany as jest.Mock).mockResolvedValue([])
 
       const result = await getDashboardMetrics()
 
@@ -145,23 +149,12 @@ describe('Analytics Service', () => {
           closedAt: null, // No closedAt
         },
       ])
-      ;(prisma.sLATracking.findMany as jest.Mock).mockResolvedValue([])
 
       const result = await getDashboardMetrics()
 
       expect(result.averageResolutionTime).toBe(0)
     })
 
-    it('should handle empty SLA tracking', async () => {
-      ;(prisma.ticket.count as jest.Mock).mockResolvedValue(0)
-      ;(prisma.ticket.groupBy as jest.Mock).mockResolvedValue([])
-      ;(prisma.ticket.findMany as jest.Mock).mockResolvedValue([])
-      ;(prisma.sLATracking.findMany as jest.Mock).mockResolvedValue([])
-
-      const result = await getDashboardMetrics()
-
-      expect(result.slaCompliance).toBe(100)
-    })
   })
 
   describe('getAgentPerformance', () => {
@@ -178,14 +171,6 @@ describe('Analytics Service', () => {
             email: 'agent@example.com',
             firstName: 'John',
             lastName: 'Doe',
-          },
-          slaTracking: {
-            firstResponseActual: new Date('2025-01-01T10:30:00Z'),
-            firstResponseTarget: new Date('2025-01-01T11:00:00Z'),
-            resolutionActual: new Date('2025-01-01T12:00:00Z'),
-            resolutionTarget: new Date('2025-01-01T13:00:00Z'),
-            firstResponseBreached: false,
-            resolutionBreached: false,
           },
         },
       ]
@@ -214,7 +199,6 @@ describe('Analytics Service', () => {
             firstName: 'John',
             lastName: 'Doe',
           },
-          slaTracking: null,
         },
         {
           id: 'ticket-2',
@@ -228,7 +212,6 @@ describe('Analytics Service', () => {
             firstName: 'Jane',
             lastName: 'Smith',
           },
-          slaTracking: null,
         },
       ]
 
@@ -255,58 +238,6 @@ describe('Analytics Service', () => {
       )
     })
 
-    it('should calculate SLA compliance correctly', async () => {
-      const mockTickets = [
-        {
-          id: 'ticket-1',
-          assigneeId: 'user-1',
-          status: TicketStatus.RESOLVED,
-          createdAt: new Date('2025-01-01T10:00:00Z'),
-          closedAt: new Date('2025-01-01T12:00:00Z'),
-          assignee: {
-            id: 'user-1',
-            email: 'agent@example.com',
-            firstName: 'John',
-            lastName: 'Doe',
-          },
-          slaTracking: {
-            firstResponseActual: new Date('2025-01-01T10:30:00Z'),
-            firstResponseTarget: new Date('2025-01-01T11:00:00Z'),
-            resolutionActual: new Date('2025-01-01T12:00:00Z'),
-            resolutionTarget: new Date('2025-01-01T13:00:00Z'),
-            firstResponseBreached: false,
-            resolutionBreached: false,
-          },
-        },
-        {
-          id: 'ticket-2',
-          assigneeId: 'user-1',
-          status: TicketStatus.RESOLVED,
-          createdAt: new Date('2025-01-01T10:00:00Z'),
-          closedAt: new Date('2025-01-01T12:00:00Z'),
-          assignee: {
-            id: 'user-1',
-            email: 'agent@example.com',
-            firstName: 'John',
-            lastName: 'Doe',
-          },
-          slaTracking: {
-            firstResponseActual: new Date('2025-01-01T10:30:00Z'),
-            firstResponseTarget: new Date('2025-01-01T11:00:00Z'),
-            resolutionActual: new Date('2025-01-01T14:00:00Z'),
-            resolutionTarget: new Date('2025-01-01T13:00:00Z'),
-            firstResponseBreached: false,
-            resolutionBreached: true,
-          },
-        },
-      ]
-
-      ;(prisma.ticket.findMany as jest.Mock).mockResolvedValue(mockTickets)
-
-      const result = await getAgentPerformance()
-
-      expect(result[0].slaCompliance).toBe(50) // 1 out of 2 breached
-    })
   })
 
   describe('calculateMTTR', () => {
@@ -521,34 +452,6 @@ describe('Analytics Service', () => {
       expect(result).toContain('Tickets Resolved')
     })
 
-    it('should export SLA to CSV', async () => {
-      const mockTracking = [
-        {
-          ticket: {
-            ticketNumber: 'TKT-001',
-            subject: 'Test Ticket',
-          },
-          slaPolicy: {
-            name: 'Standard SLA',
-            priority: TicketPriority.MEDIUM,
-          },
-          firstResponseTarget: new Date('2025-01-01T11:00:00Z'),
-          firstResponseActual: new Date('2025-01-01T10:30:00Z'),
-          firstResponseBreached: false,
-          resolutionTarget: new Date('2025-01-01T13:00:00Z'),
-          resolutionActual: new Date('2025-01-01T12:00:00Z'),
-          resolutionBreached: false,
-        },
-      ]
-
-      ;(prisma.sLATracking.findMany as jest.Mock).mockResolvedValue(mockTracking)
-
-      const result = await exportAnalyticsToCSV('sla')
-
-      expect(result).toContain('Ticket Number')
-      expect(result).toContain('TKT-001')
-      expect(result).toContain('Standard SLA')
-    })
 
     it('should handle date filters', async () => {
       const startDate = new Date('2025-01-01')
@@ -688,71 +591,6 @@ describe('Analytics Service', () => {
       expect(result).toContain('TKT-001')
     })
 
-    it('should handle SLA export with date filters', async () => {
-      const startDate = new Date('2025-01-01')
-      const endDate = new Date('2025-01-31')
-
-      ;(prisma.sLATracking.findMany as jest.Mock).mockResolvedValue([])
-
-      await exportAnalyticsToCSV('sla', { startDate, endDate })
-
-      expect(prisma.sLATracking.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            createdAt: {
-              gte: startDate,
-              lte: endDate,
-            },
-          }),
-        })
-      )
-    })
-
-    it('should handle SLA export with only startDate', async () => {
-      const startDate = new Date('2025-01-01')
-      ;(prisma.sLATracking.findMany as jest.Mock).mockResolvedValue([])
-
-      await exportAnalyticsToCSV('sla', { startDate })
-
-      expect(prisma.sLATracking.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            createdAt: {
-              gte: startDate,
-            },
-          }),
-        })
-      )
-    })
-
-    it('should handle SLA export with only endDate', async () => {
-      const endDate = new Date('2025-01-31')
-      ;(prisma.sLATracking.findMany as jest.Mock).mockResolvedValue([])
-
-      await exportAnalyticsToCSV('sla', { endDate })
-
-      expect(prisma.sLATracking.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            createdAt: {
-              lte: endDate,
-            },
-          }),
-        })
-      )
-    })
-
-    it('should handle SLA export without date filters', async () => {
-      ;(prisma.sLATracking.findMany as jest.Mock).mockResolvedValue([])
-
-      await exportAnalyticsToCSV('sla')
-
-      expect(prisma.sLATracking.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: {},
-        })
-      )
-    })
   })
 
   describe('getAgentPerformance edge cases', () => {
@@ -770,7 +608,6 @@ describe('Analytics Service', () => {
             firstName: 'John',
             lastName: 'Doe',
           },
-          slaTracking: null,
         },
       ]
 
@@ -779,7 +616,6 @@ describe('Analytics Service', () => {
       const result = await getAgentPerformance()
 
       expect(result).toHaveLength(1)
-      expect(result[0].slaCompliance).toBe(100) // No breaches if no tracking
     })
 
     it('should handle tickets without closedAt', async () => {
@@ -796,7 +632,6 @@ describe('Analytics Service', () => {
             firstName: 'John',
             lastName: 'Doe',
           },
-          slaTracking: null,
         },
       ]
 
@@ -823,7 +658,6 @@ describe('Analytics Service', () => {
             firstName: null,
             lastName: null,
           },
-          slaTracking: null,
         },
       ]
 
@@ -848,14 +682,11 @@ describe('Analytics Service', () => {
             firstName: 'John',
             lastName: 'Doe',
           },
-          slaTracking: {
-            firstResponseActual: new Date('2025-01-01T10:15:00Z'),
-            firstResponseTarget: new Date('2025-01-01T11:00:00Z'),
-            resolutionActual: null,
-            resolutionTarget: new Date('2025-01-01T13:00:00Z'),
-            firstResponseBreached: false,
-            resolutionBreached: false,
-          },
+          comments: [
+            {
+              createdAt: new Date('2025-01-01T10:15:00Z'), // 15 minutes after ticket creation
+            },
+          ],
         },
       ]
 
@@ -880,7 +711,7 @@ describe('Analytics Service', () => {
             firstName: 'John',
             lastName: 'Doe',
           },
-          slaTracking: null,
+          comments: [], // No comments = no first response time
         },
       ]
 
@@ -905,7 +736,6 @@ describe('Analytics Service', () => {
             firstName: 'John',
             lastName: null,
           },
-          slaTracking: null,
         },
       ]
 

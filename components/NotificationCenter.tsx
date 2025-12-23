@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { usePathname } from 'next/navigation'
 import {
   BellIcon,
   XMarkIcon,
@@ -20,6 +21,7 @@ interface Notification {
 }
 
 export default function NotificationCenter() {
+  const pathname = usePathname()
   const [isOpen, setIsOpen] = useState(false)
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
@@ -27,7 +29,14 @@ export default function NotificationCenter() {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
+  // Check if we should hide on landing/login/register/checkout pages
+  // Handle null/undefined pathname during navigation
+  const shouldHide = !pathname || pathname === '/' || pathname === '/login' || pathname === '/register' || pathname === '/checkout' || pathname.startsWith('/reset-password')
+
   useEffect(() => {
+    // Don't initialize if we should hide
+    if (shouldHide) return
+
     fetchNotifications()
 
     // Connect to WebSocket
@@ -41,7 +50,7 @@ export default function NotificationCenter() {
         clearTimeout(reconnectTimeoutRef.current)
       }
     }
-  }, [])
+  }, [pathname]) // Use pathname directly instead of shouldHide
 
   const connectWebSocket = () => {
     const token = localStorage.getItem('accessToken')
@@ -226,6 +235,11 @@ export default function NotificationCenter() {
     const diffDays = Math.floor(diffHours / 24)
     if (diffDays < 7) return `${diffDays}d ago`
     return date.toLocaleDateString()
+  }
+
+  // Hide on landing/login/register pages - return after all hooks
+  if (shouldHide) {
+    return null
   }
 
   return (

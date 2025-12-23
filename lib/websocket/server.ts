@@ -45,7 +45,9 @@ class WSServer {
           return
         }
 
-        const roles = user.roles.map((ur) => ur.role.name)
+        const roles = user.roles
+          .map((ur) => ur.role?.name || (ur.customRole ? `CUSTOM:${ur.customRole.name}` : null))
+          .filter((r): r is string => r !== null)
 
         const client: WebSocketClient = {
           ws,

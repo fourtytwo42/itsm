@@ -29,6 +29,14 @@
       "namedRegex": "^/admin/tenants/(?<nxtPid>[^/]+?)(?:/)?$"
     },
     {
+      "page": "/admin/users/[id]",
+      "regex": "^/admin/users/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/admin/users/(?<nxtPid>[^/]+?)(?:/)?$"
+    },
+    {
       "page": "/api/v1/admin/asset-types/[id]",
       "regex": "^/api/v1/admin/asset\\-types/([^/]+?)(?:/)?$",
       "routeKeys": {
@@ -52,6 +60,14 @@
         "nxtPfieldId": "nxtPfieldId"
       },
       "namedRegex": "^/api/v1/admin/asset\\-types/(?<nxtPid>[^/]+?)/fields/(?<nxtPfieldId>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/api/v1/admin/custom-roles/[id]",
+      "regex": "^/api/v1/admin/custom\\-roles/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/api/v1/admin/custom\\-roles/(?<nxtPid>[^/]+?)(?:/)?$"
     },
     {
       "page": "/api/v1/admin/tenants/[id]",
@@ -126,6 +142,14 @@
       "namedRegex": "^/api/v1/admin/users/(?<nxtPid>[^/]+?)/tenants(?:/)?$"
     },
     {
+      "page": "/api/v1/agent/users/[id]/tenants",
+      "regex": "^/api/v1/agent/users/([^/]+?)/tenants(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/api/v1/agent/users/(?<nxtPid>[^/]+?)/tenants(?:/)?$"
+    },
+    {
       "page": "/api/v1/assets/[id]",
       "regex": "^/api/v1/assets/([^/]+?)(?:/)?$",
       "routeKeys": {
@@ -134,28 +158,12 @@
       "namedRegex": "^/api/v1/assets/(?<nxtPid>[^/]+?)(?:/)?$"
     },
     {
-      "page": "/api/v1/changes/[id]",
-      "regex": "^/api/v1/changes/([^/]+?)(?:/)?$",
+      "page": "/api/v1/assets/[id]/tickets",
+      "regex": "^/api/v1/assets/([^/]+?)/tickets(?:/)?$",
       "routeKeys": {
         "nxtPid": "nxtPid"
       },
-      "namedRegex": "^/api/v1/changes/(?<nxtPid>[^/]+?)(?:/)?$"
-    },
-    {
-      "page": "/api/v1/changes/[id]/approve",
-      "regex": "^/api/v1/changes/([^/]+?)/approve(?:/)?$",
-      "routeKeys": {
-        "nxtPid": "nxtPid"
-      },
-      "namedRegex": "^/api/v1/changes/(?<nxtPid>[^/]+?)/approve(?:/)?$"
-    },
-    {
-      "page": "/api/v1/changes/[id]/submit",
-      "regex": "^/api/v1/changes/([^/]+?)/submit(?:/)?$",
-      "routeKeys": {
-        "nxtPid": "nxtPid"
-      },
-      "namedRegex": "^/api/v1/changes/(?<nxtPid>[^/]+?)/submit(?:/)?$"
+      "namedRegex": "^/api/v1/assets/(?<nxtPid>[^/]+?)/tickets(?:/)?$"
     },
     {
       "page": "/api/v1/global/organizations/[id]",
@@ -222,22 +230,6 @@
       "namedRegex": "^/api/v1/notifications/(?<nxtPid>[^/]+?)(?:/)?$"
     },
     {
-      "page": "/api/v1/sla/policies/[id]",
-      "regex": "^/api/v1/sla/policies/([^/]+?)(?:/)?$",
-      "routeKeys": {
-        "nxtPid": "nxtPid"
-      },
-      "namedRegex": "^/api/v1/sla/policies/(?<nxtPid>[^/]+?)(?:/)?$"
-    },
-    {
-      "page": "/api/v1/sla/tracking/[ticketId]",
-      "regex": "^/api/v1/sla/tracking/([^/]+?)(?:/)?$",
-      "routeKeys": {
-        "nxtPticketId": "nxtPticketId"
-      },
-      "namedRegex": "^/api/v1/sla/tracking/(?<nxtPticketId>[^/]+?)(?:/)?$"
-    },
-    {
       "page": "/api/v1/storage/tenant-logos/[filename]",
       "regex": "^/api/v1/storage/tenant\\-logos/([^/]+?)(?:/)?$",
       "routeKeys": {
@@ -278,20 +270,20 @@
       "namedRegex": "^/api/v1/tickets/(?<nxtPid>[^/]+?)(?:/)?$"
     },
     {
+      "page": "/api/v1/tickets/[id]/escalate",
+      "regex": "^/api/v1/tickets/([^/]+?)/escalate(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/api/v1/tickets/(?<nxtPid>[^/]+?)/escalate(?:/)?$"
+    },
+    {
       "page": "/assets/[id]",
       "regex": "^/assets/([^/]+?)(?:/)?$",
       "routeKeys": {
         "nxtPid": "nxtPid"
       },
       "namedRegex": "^/assets/(?<nxtPid>[^/]+?)(?:/)?$"
-    },
-    {
-      "page": "/changes/[id]",
-      "regex": "^/changes/([^/]+?)(?:/)?$",
-      "routeKeys": {
-        "nxtPid": "nxtPid"
-      },
-      "namedRegex": "^/changes/(?<nxtPid>[^/]+?)(?:/)?$"
     },
     {
       "page": "/global/organizations/[id]",
@@ -416,10 +408,10 @@
       "namedRegex": "^/admin/config(?:/)?$"
     },
     {
-      "page": "/admin/sla",
-      "regex": "^/admin/sla(?:/)?$",
+      "page": "/admin/custom-roles",
+      "regex": "^/admin/custom\\-roles(?:/)?$",
       "routeKeys": {},
-      "namedRegex": "^/admin/sla(?:/)?$"
+      "namedRegex": "^/admin/custom\\-roles(?:/)?$"
     },
     {
       "page": "/admin/tenants",
@@ -470,6 +462,12 @@
       "namedRegex": "^/api/v1/admin/config/ticket\\-types(?:/)?$"
     },
     {
+      "page": "/api/v1/admin/custom-roles",
+      "regex": "^/api/v1/admin/custom\\-roles(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/v1/admin/custom\\-roles(?:/)?$"
+    },
+    {
       "page": "/api/v1/admin/email-config",
       "regex": "^/api/v1/admin/email\\-config(?:/)?$",
       "routeKeys": {},
@@ -492,6 +490,12 @@
       "regex": "^/api/v1/admin/users(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/api/v1/admin/users(?:/)?$"
+    },
+    {
+      "page": "/api/v1/agent/users",
+      "regex": "^/api/v1/agent/users(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/v1/agent/users(?:/)?$"
     },
     {
       "page": "/api/v1/ai/chat",
@@ -552,12 +556,6 @@
       "regex": "^/api/v1/auth/reset\\-password(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/api/v1/auth/reset\\-password(?:/)?$"
-    },
-    {
-      "page": "/api/v1/changes",
-      "regex": "^/api/v1/changes(?:/)?$",
-      "routeKeys": {},
-      "namedRegex": "^/api/v1/changes(?:/)?$"
     },
     {
       "page": "/api/v1/config/public",
@@ -650,18 +648,6 @@
       "namedRegex": "^/api/v1/public/token(?:/)?$"
     },
     {
-      "page": "/api/v1/sla/compliance",
-      "regex": "^/api/v1/sla/compliance(?:/)?$",
-      "routeKeys": {},
-      "namedRegex": "^/api/v1/sla/compliance(?:/)?$"
-    },
-    {
-      "page": "/api/v1/sla/policies",
-      "regex": "^/api/v1/sla/policies(?:/)?$",
-      "routeKeys": {},
-      "namedRegex": "^/api/v1/sla/policies(?:/)?$"
-    },
-    {
       "page": "/api/v1/tickets",
       "regex": "^/api/v1/tickets(?:/)?$",
       "routeKeys": {},
@@ -680,16 +666,10 @@
       "namedRegex": "^/assets/new(?:/)?$"
     },
     {
-      "page": "/changes",
-      "regex": "^/changes(?:/)?$",
+      "page": "/checkout",
+      "regex": "^/checkout(?:/)?$",
       "routeKeys": {},
-      "namedRegex": "^/changes(?:/)?$"
-    },
-    {
-      "page": "/changes/new",
-      "regex": "^/changes/new(?:/)?$",
-      "routeKeys": {},
-      "namedRegex": "^/changes/new(?:/)?$"
+      "namedRegex": "^/checkout(?:/)?$"
     },
     {
       "page": "/dashboard",

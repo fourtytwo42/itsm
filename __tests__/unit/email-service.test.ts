@@ -1,16 +1,24 @@
 import { buildSmtpTransport, getEmailConfig, parseEmail, sendEmail, upsertEmailConfig } from '@/lib/services/email-service'
-import { prisma } from '@/lib/prisma'
 import nodemailer from 'nodemailer'
 import { EmailEncryption, EmailProtocol } from '@prisma/client'
 
+const mockEmailConfiguration = {
+  upsert: jest.fn(),
+  findFirst: jest.fn(),
+}
+
+const mockPrisma = {
+  emailConfiguration: mockEmailConfiguration,
+}
+
 jest.mock('@/lib/prisma', () => ({
-  prisma: {
-    emailConfiguration: {
-      upsert: jest.fn(),
-      findFirst: jest.fn(),
-    },
+  __esModule: true,
+  get default() {
+    return mockPrisma
   },
 }))
+
+const prisma = mockPrisma as any
 
 jest.mock('nodemailer', () => ({
   createTransport: jest.fn(() => ({

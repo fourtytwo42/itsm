@@ -66,7 +66,6 @@ export default function OrganizationContext() {
           style={{ width: '24px', height: '24px', objectFit: 'contain' }}
         />
       )}
-      <span style={{ color: 'var(--text-secondary)' }}>Organization:</span>
       <Link
         href="/organization/settings"
         style={{

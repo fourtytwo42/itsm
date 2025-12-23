@@ -1,20 +1,30 @@
 import { addTicketComment, createTicket, generateTicketNumber, getTicketById, listTickets, updateTicket } from '@/lib/services/ticket-service'
-import { prisma } from '@/lib/prisma'
 import { TicketPriority, TicketStatus } from '@prisma/client'
 
+const mockTicket = {
+  create: jest.fn(),
+  findMany: jest.fn(),
+  findUnique: jest.fn(),
+  update: jest.fn(),
+  count: jest.fn(),
+}
+const mockTicketComment = {
+  create: jest.fn(),
+}
+
+const mockPrisma = {
+  ticket: mockTicket,
+  ticketComment: mockTicketComment,
+}
+
 jest.mock('@/lib/prisma', () => ({
-  prisma: {
-    ticket: {
-      create: jest.fn(),
-      findMany: jest.fn(),
-      findUnique: jest.fn(),
-      update: jest.fn(),
-    },
-    ticketComment: {
-      create: jest.fn(),
-    },
+  __esModule: true,
+  get default() {
+    return mockPrisma
   },
 }))
+
+const prisma = mockPrisma as any
 
 jest.mock('@/lib/websocket/server', () => ({
   wsServer: {
@@ -113,6 +123,7 @@ describe('Ticket Service', () => {
     it('should list tickets with filters', async () => {
       const mockTickets = [{ id: '1' }]
       ;(prisma.ticket.findMany as jest.Mock).mockResolvedValue(mockTickets)
+      ;(prisma.ticket.count as jest.Mock).mockResolvedValue(1)
 
       const result = await listTickets({ status: TicketStatus.NEW, priority: TicketPriority.HIGH })
 
@@ -124,7 +135,15 @@ describe('Ticket Service', () => {
           }),
         })
       )
-      expect(result).toEqual(mockTickets)
+      expect(result).toEqual({
+        tickets: mockTickets,
+        pagination: {
+          page: 1,
+          limit: 50,
+          total: 1,
+          totalPages: 1,
+        },
+      })
     })
   })
 

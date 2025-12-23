@@ -7,11 +7,9 @@ import {
 import { auditLog } from '@/lib/middleware/audit'
 import { AuditEventType } from '@prisma/client'
 import { z } from 'zod'
-import { AssetType } from '@prisma/client'
 
 const createAssetTypeSchema = z.object({
   name: z.string().min(1),
-  baseType: z.nativeEnum(AssetType),
   description: z.string().optional(),
 })
 
@@ -40,16 +38,21 @@ export async function GET(request: NextRequest) {
     }
 
     const searchParams = request.nextUrl.searchParams
-    const baseType = searchParams.get('baseType') as AssetType | null
+    const isActive = searchParams.get('isActive') === 'true' ? true : searchParams.get('isActive') === 'false' ? false : undefined
 
     const assetTypes = await listCustomAssetTypes(
-      authContext.user.organizationId,
-      baseType || undefined
+      authContext.user.organizationId
     )
+
+    // Filter by isActive if provided
+    let filteredTypes = assetTypes
+    if (isActive !== undefined) {
+      filteredTypes = assetTypes.filter(at => at.isActive === isActive)
+    }
 
     return NextResponse.json({
       success: true,
-      data: { assetTypes },
+      data: { assetTypes: filteredTypes },
     })
   } catch (error) {
     console.error('List asset types error:', error)
@@ -105,8 +108,8 @@ export async function POST(request: NextRequest) {
       assetType.id,
       authContext.user.id,
       authContext.user.email,
-      `Created custom asset type: ${assetType.name} (${assetType.baseType})`,
-      { assetTypeId: assetType.id, name: assetType.name, baseType: assetType.baseType },
+      `Created custom asset type: ${assetType.name}`,
+      { assetTypeId: assetType.id, name: assetType.name },
       request
     )
 

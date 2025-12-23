@@ -32,6 +32,22 @@ interface Ticket {
   } | null
   category?: string | null
   customFields?: Record<string, any> | null
+  escalatedToRoleId?: string | null
+  escalatedToSystemRole?: string | null
+  escalatedAt?: string | null
+  escalatedBy?: string | null
+  escalationNote?: string | null
+  escalatedByUser?: {
+    id: string
+    email: string
+    firstName: string | null
+    lastName: string | null
+  } | null
+  escalatedToCustomRole?: {
+    id: string
+    name: string
+    displayName: string
+  } | null
   comments: Array<{
     id: string
     body: string
@@ -45,6 +61,13 @@ interface Ticket {
   }>
 }
 
+interface EscalationRole {
+  type: 'system' | 'custom'
+  id: string
+  name: string
+  displayName: string
+}
+
 export default function TicketDetailPage() {
   const params = useParams()
   const ticketId = params?.id as string
@@ -56,6 +79,15 @@ export default function TicketDetailPage() {
   const [saving, setSaving] = useState(false)
   const [updatingStatus, setUpdatingStatus] = useState(false)
   const [user, setUser] = useState<any>(null)
+  const [showEscalationModal, setShowEscalationModal] = useState(false)
+  const [availableRoles, setAvailableRoles] = useState<EscalationRole[]>([])
+  const [loadingRoles, setLoadingRoles] = useState(false)
+  const [escalationData, setEscalationData] = useState({
+    escalatedToRoleId: '',
+    escalatedToSystemRole: '',
+    escalationNote: '',
+  })
+  const [escalating, setEscalating] = useState(false)
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user')
@@ -150,7 +182,80 @@ export default function TicketDetailPage() {
     }
   }
 
-  const isAgentOrManager = user?.roles?.some((r: string) => ['AGENT', 'IT_MANAGER', 'ADMIN'].includes(r))
+  const isAgentOrManager = user?.roles?.some((r: string) => 
+    ['AGENT', 'IT_MANAGER', 'ADMIN'].includes(r) || r.startsWith('CUSTOM:')
+  )
+
+  const canEscalate = isAgentOrManager
+
+  const loadAvailableRoles = async () => {
+    setLoadingRoles(true)
+    try {
+      const token = localStorage.getItem('accessToken')
+      const res = await fetch(`/api/v1/tickets/${ticketId}/escalate`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      const data = await res.json()
+      if (data.success) {
+        setAvailableRoles(data.data.availableRoles)
+      }
+    } catch (err) {
+      console.error('Failed to load escalation roles:', err)
+    } finally {
+      setLoadingRoles(false)
+    }
+  }
+
+  const handleEscalate = async () => {
+    if (!escalationData.escalatedToRoleId && !escalationData.escalatedToSystemRole) {
+      setError('Please select a role to escalate to')
+      return
+    }
+
+    setEscalating(true)
+    setError('')
+    try {
+      const token = localStorage.getItem('accessToken')
+      const res = await fetch(`/api/v1/tickets/${ticketId}/escalate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          escalatedToRoleId: escalationData.escalatedToRoleId || undefined,
+          escalatedToSystemRole: escalationData.escalatedToSystemRole || undefined,
+          escalationNote: escalationData.escalationNote || undefined,
+        }),
+      })
+      const data = await res.json()
+      if (!data.success) {
+        setError(data.error?.message || 'Failed to escalate ticket')
+        setEscalating(false)
+        return
+      }
+      // Refresh ticket data
+      const ticketRes = await fetch(`/api/v1/tickets/${ticketId}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      const ticketData = await ticketRes.json()
+      if (ticketData.success) {
+        setTicket(ticketData.data)
+      }
+      setShowEscalationModal(false)
+      setEscalationData({ escalatedToRoleId: '', escalatedToSystemRole: '', escalationNote: '' })
+    } catch (err) {
+      setError('Failed to escalate ticket')
+    } finally {
+      setEscalating(false)
+    }
+  }
+
+  useEffect(() => {
+    if (showEscalationModal && canEscalate) {
+      loadAvailableRoles()
+    }
+  }, [showEscalationModal, canEscalate])
 
   if (loading) return <div className="container" style={{ padding: '2rem' }}>Loading ticket...</div>
   if (error) return <div className="container" style={{ padding: '2rem', color: 'var(--error)' }}>{error}</div>
@@ -200,6 +305,45 @@ export default function TicketDetailPage() {
           </div>
         </div>
 
+        {/* Escalation Information */}
+        {ticket.escalatedAt && (
+          <div style={{
+            padding: '1rem',
+            backgroundColor: 'rgba(251, 191, 36, 0.1)',
+            border: '1px solid rgba(251, 191, 36, 0.3)',
+            borderRadius: '8px',
+            marginBottom: '1rem',
+          }}>
+            <h3 style={{ marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600, color: 'var(--warning)' }}>
+              ⚠ Escalated
+            </h3>
+            <div style={{ display: 'grid', gap: '0.25rem', fontSize: '0.875rem' }}>
+              <div>
+                <strong>Escalated to:</strong>{' '}
+                {ticket.escalatedToCustomRole
+                  ? ticket.escalatedToCustomRole.displayName
+                  : ticket.escalatedToSystemRole?.replace('_', ' ') || 'Unknown'}
+              </div>
+              {ticket.escalatedByUser && (
+                <div>
+                  <strong>Escalated by:</strong>{' '}
+                  {ticket.escalatedByUser.firstName && ticket.escalatedByUser.lastName
+                    ? `${ticket.escalatedByUser.firstName} ${ticket.escalatedByUser.lastName}`
+                    : ticket.escalatedByUser.email}
+                </div>
+              )}
+              <div>
+                <strong>Escalated at:</strong> {new Date(ticket.escalatedAt).toLocaleString()}
+              </div>
+              {ticket.escalationNote && (
+                <div>
+                  <strong>Note:</strong> {ticket.escalationNote}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Status and Priority */}
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -243,6 +387,23 @@ export default function TicketDetailPage() {
               </span>
             </div>
           )}
+          {canEscalate && !ticket.escalatedAt && (
+            <button
+              onClick={() => setShowEscalationModal(true)}
+              style={{
+                padding: '0.5rem 1rem',
+                backgroundColor: 'rgba(251, 191, 36, 0.1)',
+                color: 'var(--warning)',
+                border: '1px solid rgba(251, 191, 36, 0.3)',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: 600,
+              }}
+            >
+              Escalate Ticket
+            </button>
+          )}
         </div>
         {error && <p style={{ color: 'var(--error)', marginTop: '0.5rem' }}>{error}</p>}
       </div>
@@ -279,6 +440,127 @@ export default function TicketDetailPage() {
           {error && <p style={{ color: 'var(--error)' }}>{error}</p>}
         </div>
       </div>
+
+      {/* Escalation Modal */}
+      {showEscalationModal && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+          onClick={() => !escalating && setShowEscalationModal(false)}
+        >
+          <div
+            style={{
+              backgroundColor: 'var(--bg-primary)',
+              borderRadius: '8px',
+              padding: '2rem',
+              maxWidth: '500px',
+              width: '90%',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 style={{ marginTop: 0, marginBottom: '1.5rem' }}>Escalate Ticket</h2>
+            <div style={{ display: 'grid', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
+                  Escalate to Role <span style={{ color: 'var(--error)' }}>*</span>
+                </label>
+                {loadingRoles ? (
+                  <p style={{ color: 'var(--text-secondary)' }}>Loading roles...</p>
+                ) : (
+                  <select
+                    className="input"
+                    value={escalationData.escalatedToSystemRole || escalationData.escalatedToRoleId}
+                    onChange={(e) => {
+                      const selectedRole = availableRoles.find(r => 
+                        (r.type === 'system' ? r.id : r.id) === e.target.value
+                      )
+                      if (selectedRole) {
+                        if (selectedRole.type === 'system') {
+                          setEscalationData({
+                            ...escalationData,
+                            escalatedToSystemRole: selectedRole.id,
+                            escalatedToRoleId: '',
+                          })
+                        } else {
+                          setEscalationData({
+                            ...escalationData,
+                            escalatedToRoleId: selectedRole.id,
+                            escalatedToSystemRole: '',
+                          })
+                        }
+                      }
+                    }}
+                    required
+                    disabled={escalating}
+                  >
+                    <option value="">Select a role...</option>
+                    {availableRoles.map((role) => (
+                      <option key={`${role.type}-${role.id}`} value={role.id}>
+                        {role.displayName} {role.type === 'custom' ? '(Custom)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
+                  Escalation Note (Optional)
+                </label>
+                <textarea
+                  className="input"
+                  rows={3}
+                  placeholder="Add a note about why this ticket is being escalated..."
+                  value={escalationData.escalationNote}
+                  onChange={(e) => setEscalationData({ ...escalationData, escalationNote: e.target.value })}
+                  disabled={escalating}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowEscalationModal(false)}
+                  disabled={escalating}
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    backgroundColor: 'var(--bg-secondary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    cursor: escalating ? 'not-allowed' : 'pointer',
+                    fontSize: '0.875rem',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleEscalate}
+                  disabled={escalating || (!escalationData.escalatedToRoleId && !escalationData.escalatedToSystemRole)}
+                  style={{
+                    backgroundColor: escalating ? 'var(--text-secondary)' : 'var(--warning)',
+                  }}
+                >
+                  {escalating ? 'Escalating...' : 'Escalate Ticket'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

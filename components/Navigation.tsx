@@ -44,14 +44,12 @@ export default function Navigation() {
     { href: '/tickets', label: 'Tickets', icon: '🎫' },
     { href: '/kb', label: 'Knowledge Base', icon: '📚' },
     { href: '/assets', label: 'Assets', icon: '💻', roles: ['AGENT', 'IT_MANAGER', 'ADMIN'] },
-    { href: '/changes', label: 'Changes', icon: '🔄', roles: ['AGENT', 'IT_MANAGER', 'ADMIN'] },
     { href: '/reports', label: 'Reports', icon: '📈', roles: ['IT_MANAGER', 'ADMIN'] },
   ]
 
   const adminItems = [
     { href: '/admin/users', label: 'Users', icon: '👥' },
     { href: '/admin/config', label: 'Configuration', icon: '⚙️' },
-    { href: '/admin/sla', label: 'SLA Management', icon: '⏱️' },
   ]
 
   const canAccess = (item: any) => {

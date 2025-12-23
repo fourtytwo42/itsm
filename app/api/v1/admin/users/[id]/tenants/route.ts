@@ -15,13 +15,14 @@ export async function GET(
     const authContext = await getAuthContext(request)
     requireAuth(authContext)
 
-    // Allow ADMIN or IT_MANAGER to view tenant assignments
+    // Allow ADMIN, IT_MANAGER, or AGENT to view tenant assignments
     const isAdmin = authContext.user.roles.includes('ADMIN')
     const isITManager = authContext.user.roles.includes('IT_MANAGER')
+    const isAgent = authContext.user.roles.includes('AGENT')
 
-    if (!isAdmin && !isITManager) {
+    if (!isAdmin && !isITManager && !isAgent) {
       return NextResponse.json(
-        { success: false, error: { code: 'FORBIDDEN', message: 'Admin or IT Manager access required' } },
+        { success: false, error: { code: 'FORBIDDEN', message: 'Admin, IT Manager, or Agent access required' } },
         { status: 403 }
       )
     }
@@ -43,7 +44,77 @@ export async function GET(
       }
     }
 
-    // Get user's tenant assignments
+    // If Agent, verify the user is in at least one of the agent's tenants
+    if (isAgent && !isAdmin && !isITManager) {
+      // Get agent's tenant assignments
+      const agentTenantAssignments = await prisma.tenantAssignment.findMany({
+        where: {
+          userId: authContext.user.id,
+          category: null,
+        },
+        select: {
+          tenantId: true,
+        },
+      })
+
+      const agentTenantIds = agentTenantAssignments.map((a) => a.tenantId)
+
+      if (agentTenantIds.length === 0) {
+        return NextResponse.json({
+          success: true,
+          data: [],
+        })
+      }
+
+      // Verify the target user is assigned to at least one of the agent's tenants
+      const targetUserAssignments = await prisma.tenantAssignment.findMany({
+        where: {
+          userId: id,
+          tenantId: { in: agentTenantIds },
+          category: null,
+        },
+        select: {
+          tenantId: true,
+        },
+      })
+
+      if (targetUserAssignments.length === 0) {
+        return NextResponse.json({
+          success: true,
+          data: [],
+        })
+      }
+
+      // Get user's tenant assignments (only for tenants the agent has access to)
+      const assignments = await prisma.tenantAssignment.findMany({
+        where: {
+          userId: id,
+          tenantId: { in: agentTenantIds },
+          category: null,
+        },
+        include: {
+          tenant: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              isActive: true,
+            },
+          },
+        },
+      })
+
+      return NextResponse.json({
+        success: true,
+        data: assignments.map((a) => ({
+          id: a.id,
+          tenantId: a.tenantId,
+          tenant: a.tenant,
+        })),
+      })
+    }
+
+    // Get user's tenant assignments (for Admin and IT Manager)
     const assignments = await prisma.tenantAssignment.findMany({
       where: {
         userId: id,

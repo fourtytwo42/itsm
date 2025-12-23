@@ -1,5 +1,8 @@
+-- CreateExtension
+CREATE EXTENSION IF NOT EXISTS vector;
+
 -- CreateEnum
-CREATE TYPE "RoleName" AS ENUM ('ADMIN', 'IT_MANAGER', 'AGENT', 'END_USER', 'REQUESTER');
+CREATE TYPE "RoleName" AS ENUM ('GLOBAL_ADMIN', 'ADMIN', 'IT_MANAGER', 'AGENT', 'END_USER', 'REQUESTER');
 
 -- CreateEnum
 CREATE TYPE "TicketStatus" AS ENUM ('NEW', 'IN_PROGRESS', 'RESOLVED', 'CLOSED');
@@ -52,6 +55,9 @@ CREATE TYPE "NotificationStatus" AS ENUM ('UNREAD', 'READ', 'ARCHIVED');
 -- CreateEnum
 CREATE TYPE "SettingCategory" AS ENUM ('AUTHENTICATION', 'EMAIL', 'FILE_UPLOAD', 'BRANDING', 'TICKET', 'SYSTEM');
 
+-- CreateEnum
+CREATE TYPE "CustomFieldType" AS ENUM ('TEXT', 'NUMBER', 'DATE', 'SELECT', 'CHECKBOX');
+
 -- CreateTable
 CREATE TABLE "User" (
     "id" TEXT NOT NULL,
@@ -62,8 +68,11 @@ CREATE TABLE "User" (
     "avatar" TEXT,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
     "emailVerified" BOOLEAN NOT NULL DEFAULT false,
+    "mustChangePassword" BOOLEAN NOT NULL DEFAULT false,
     "passwordResetToken" TEXT,
     "passwordResetExpires" TIMESTAMP(3),
+    "tenantId" TEXT,
+    "organizationId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "deletedAt" TIMESTAMP(3),
@@ -80,6 +89,83 @@ CREATE TABLE "Role" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "Role_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Organization" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "slug" TEXT NOT NULL,
+    "logo" TEXT,
+    "description" TEXT,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Organization_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Tenant" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "slug" TEXT NOT NULL,
+    "logo" TEXT,
+    "description" TEXT,
+    "requiresLogin" BOOLEAN NOT NULL DEFAULT false,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "organizationId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Tenant_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "TenantCategory" (
+    "id" TEXT NOT NULL,
+    "tenantId" TEXT NOT NULL,
+    "category" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "TenantCategory_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "TenantKBArticle" (
+    "id" TEXT NOT NULL,
+    "tenantId" TEXT NOT NULL,
+    "articleId" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "TenantKBArticle_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "TenantCustomField" (
+    "id" TEXT NOT NULL,
+    "tenantId" TEXT NOT NULL,
+    "label" TEXT NOT NULL,
+    "fieldType" TEXT NOT NULL DEFAULT 'TEXT',
+    "required" BOOLEAN NOT NULL DEFAULT false,
+    "options" TEXT[],
+    "placeholder" TEXT,
+    "order" INTEGER NOT NULL DEFAULT 0,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "TenantCustomField_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "TenantAssignment" (
+    "id" TEXT NOT NULL,
+    "tenantId" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "category" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "TenantAssignment_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -100,8 +186,15 @@ CREATE TABLE "Ticket" (
     "description" TEXT NOT NULL,
     "status" "TicketStatus" NOT NULL DEFAULT 'NEW',
     "priority" "TicketPriority" NOT NULL DEFAULT 'MEDIUM',
-    "requesterId" TEXT NOT NULL,
+    "requesterId" TEXT,
+    "requesterEmail" TEXT,
+    "requesterName" TEXT,
+    "publicTokenId" TEXT,
     "assigneeId" TEXT,
+    "tenantId" TEXT,
+    "organizationId" TEXT,
+    "category" TEXT,
+    "customFields" JSONB,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "closedAt" TIMESTAMP(3),
@@ -132,6 +225,7 @@ CREATE TABLE "EmailConfiguration" (
     "password" TEXT NOT NULL,
     "encryption" "EmailEncryption" NOT NULL DEFAULT 'SSL',
     "pollingIntervalMinutes" INTEGER NOT NULL DEFAULT 5,
+    "organizationId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -148,6 +242,8 @@ CREATE TABLE "KnowledgeBaseArticle" (
     "tags" TEXT[],
     "helpfulCount" INTEGER NOT NULL DEFAULT 0,
     "notHelpfulCount" INTEGER NOT NULL DEFAULT 0,
+    "tenantId" TEXT,
+    "organizationId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "embedding" vector,
@@ -161,20 +257,12 @@ CREATE TABLE "Asset" (
     "assetNumber" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "type" "AssetType" NOT NULL,
-    "category" TEXT,
-    "manufacturer" TEXT,
-    "model" TEXT,
-    "serialNumber" TEXT,
+    "customAssetTypeId" TEXT,
     "status" "AssetStatus" NOT NULL DEFAULT 'ACTIVE',
+    "tenantId" TEXT,
+    "organizationId" TEXT,
     "assignedToId" TEXT,
     "assignedAt" TIMESTAMP(3),
-    "location" TEXT,
-    "building" TEXT,
-    "floor" TEXT,
-    "room" TEXT,
-    "purchaseDate" TIMESTAMP(3),
-    "purchasePrice" DECIMAL(10,2),
-    "warrantyExpiry" TIMESTAMP(3),
     "customFields" JSONB,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -219,6 +307,8 @@ CREATE TABLE "ChangeRequest" (
     "status" "ChangeStatus" NOT NULL DEFAULT 'DRAFT',
     "priority" "ChangePriority" NOT NULL DEFAULT 'MEDIUM',
     "riskLevel" "RiskLevel",
+    "tenantId" TEXT,
+    "organizationId" TEXT,
     "requestedById" TEXT NOT NULL,
     "requestedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "plannedStartDate" TIMESTAMP(3),
@@ -383,6 +473,70 @@ CREATE TABLE "TicketType" (
     CONSTRAINT "TicketType_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "CustomAssetType" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "baseType" "AssetType" NOT NULL,
+    "organizationId" TEXT NOT NULL,
+    "description" TEXT,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "CustomAssetType_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "AssetTypeCustomField" (
+    "id" TEXT NOT NULL,
+    "customAssetTypeId" TEXT NOT NULL,
+    "fieldName" TEXT NOT NULL,
+    "label" TEXT NOT NULL,
+    "fieldType" TEXT NOT NULL,
+    "required" BOOLEAN NOT NULL DEFAULT false,
+    "defaultValue" TEXT,
+    "options" JSONB,
+    "placeholder" TEXT,
+    "order" INTEGER NOT NULL DEFAULT 0,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "AssetTypeCustomField_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "AuditLog" (
+    "id" TEXT NOT NULL,
+    "organizationId" TEXT,
+    "eventType" TEXT NOT NULL,
+    "entityType" TEXT NOT NULL,
+    "entityId" TEXT,
+    "userId" TEXT NOT NULL,
+    "userEmail" TEXT NOT NULL,
+    "description" TEXT NOT NULL,
+    "metadata" JSONB,
+    "ipAddress" TEXT,
+    "userAgent" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "AuditLog_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "AuditConfig" (
+    "id" TEXT NOT NULL,
+    "organizationId" TEXT NOT NULL,
+    "enabled" BOOLEAN NOT NULL DEFAULT true,
+    "events" TEXT[],
+    "retentionDays" INTEGER,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "AuditConfig_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 
@@ -394,6 +548,12 @@ CREATE INDEX "User_email_idx" ON "User"("email");
 
 -- CreateIndex
 CREATE INDEX "User_isActive_idx" ON "User"("isActive");
+
+-- CreateIndex
+CREATE INDEX "User_tenantId_idx" ON "User"("tenantId");
+
+-- CreateIndex
+CREATE INDEX "User_organizationId_idx" ON "User"("organizationId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Role_name_key" ON "Role"("name");
@@ -441,6 +601,12 @@ CREATE INDEX "TicketComment_authorId_idx" ON "TicketComment"("authorId");
 CREATE INDEX "EmailConfiguration_protocol_idx" ON "EmailConfiguration"("protocol");
 
 -- CreateIndex
+CREATE INDEX "EmailConfiguration_organizationId_idx" ON "EmailConfiguration"("organizationId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "EmailConfiguration_organizationId_key" ON "EmailConfiguration"("organizationId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "KnowledgeBaseArticle_slug_key" ON "KnowledgeBaseArticle"("slug");
 
 -- CreateIndex
@@ -451,6 +617,12 @@ CREATE INDEX "KnowledgeBaseArticle_tags_idx" ON "KnowledgeBaseArticle"("tags");
 
 -- CreateIndex
 CREATE INDEX "KnowledgeBaseArticle_title_idx" ON "KnowledgeBaseArticle"("title");
+
+-- CreateIndex
+CREATE INDEX "KnowledgeBaseArticle_tenantId_idx" ON "KnowledgeBaseArticle"("tenantId");
+
+-- CreateIndex
+CREATE INDEX "KnowledgeBaseArticle_organizationId_idx" ON "KnowledgeBaseArticle"("organizationId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Asset_assetNumber_key" ON "Asset"("assetNumber");
@@ -472,6 +644,15 @@ CREATE INDEX "Asset_createdAt_idx" ON "Asset"("createdAt");
 
 -- CreateIndex
 CREATE INDEX "Asset_deletedAt_idx" ON "Asset"("deletedAt");
+
+-- CreateIndex
+CREATE INDEX "Asset_tenantId_idx" ON "Asset"("tenantId");
+
+-- CreateIndex
+CREATE INDEX "Asset_organizationId_idx" ON "Asset"("organizationId");
+
+-- CreateIndex
+CREATE INDEX "Asset_customAssetTypeId_idx" ON "Asset"("customAssetTypeId");
 
 -- CreateIndex
 CREATE INDEX "AssetRelationship_sourceAssetId_idx" ON "AssetRelationship"("sourceAssetId");
@@ -511,6 +692,12 @@ CREATE INDEX "ChangeRequest_createdAt_idx" ON "ChangeRequest"("createdAt");
 
 -- CreateIndex
 CREATE INDEX "ChangeRequest_deletedAt_idx" ON "ChangeRequest"("deletedAt");
+
+-- CreateIndex
+CREATE INDEX "ChangeRequest_tenantId_idx" ON "ChangeRequest"("tenantId");
+
+-- CreateIndex
+CREATE INDEX "ChangeRequest_organizationId_idx" ON "ChangeRequest"("organizationId");
 
 -- CreateIndex
 CREATE INDEX "ChangeApproval_changeRequestId_idx" ON "ChangeApproval"("changeRequestId");
@@ -590,6 +777,48 @@ CREATE UNIQUE INDEX "TicketType_name_key" ON "TicketType"("name");
 -- CreateIndex
 CREATE INDEX "TicketType_active_idx" ON "TicketType"("active");
 
+-- CreateIndex
+CREATE UNIQUE INDEX "CustomAssetType_organizationId_name_baseType_key" ON "CustomAssetType"("organizationId", "name", "baseType");
+
+-- CreateIndex
+CREATE INDEX "CustomAssetType_organizationId_idx" ON "CustomAssetType"("organizationId");
+
+-- CreateIndex
+CREATE INDEX "CustomAssetType_baseType_idx" ON "CustomAssetType"("baseType");
+
+-- CreateIndex
+CREATE INDEX "CustomAssetType_isActive_idx" ON "CustomAssetType"("isActive");
+
+-- CreateIndex
+CREATE INDEX "AssetTypeCustomField_customAssetTypeId_idx" ON "AssetTypeCustomField"("customAssetTypeId");
+
+-- CreateIndex
+CREATE INDEX "AssetTypeCustomField_order_idx" ON "AssetTypeCustomField"("order");
+
+-- CreateIndex
+CREATE INDEX "AssetTypeCustomField_isActive_idx" ON "AssetTypeCustomField"("isActive");
+
+-- CreateIndex
+CREATE INDEX "AuditLog_organizationId_idx" ON "AuditLog"("organizationId");
+
+-- CreateIndex
+CREATE INDEX "AuditLog_eventType_idx" ON "AuditLog"("eventType");
+
+-- CreateIndex
+CREATE INDEX "AuditLog_entityType_entityId_idx" ON "AuditLog"("entityType", "entityId");
+
+-- CreateIndex
+CREATE INDEX "AuditLog_userId_idx" ON "AuditLog"("userId");
+
+-- CreateIndex
+CREATE INDEX "AuditLog_createdAt_idx" ON "AuditLog"("createdAt");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "AuditConfig_organizationId_key" ON "AuditConfig"("organizationId");
+
+-- CreateIndex
+CREATE INDEX "AuditConfig_organizationId_idx" ON "AuditConfig"("organizationId");
+
 -- AddForeignKey
 ALTER TABLE "UserRole" ADD CONSTRAINT "UserRole_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
@@ -655,3 +884,75 @@ ALTER TABLE "NotificationPreference" ADD CONSTRAINT "NotificationPreference_user
 
 -- AddForeignKey
 ALTER TABLE "SystemSetting" ADD CONSTRAINT "SystemSetting_updatedBy_fkey" FOREIGN KEY ("updatedBy") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Tenant" ADD CONSTRAINT "Tenant_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "TenantCategory" ADD CONSTRAINT "TenantCategory_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "TenantKBArticle" ADD CONSTRAINT "TenantKBArticle_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "TenantKBArticle" ADD CONSTRAINT "TenantKBArticle_articleId_fkey" FOREIGN KEY ("articleId") REFERENCES "KnowledgeBaseArticle"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "TenantCustomField" ADD CONSTRAINT "TenantCustomField_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "TenantAssignment" ADD CONSTRAINT "TenantAssignment_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "TenantAssignment" ADD CONSTRAINT "TenantAssignment_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Ticket" ADD CONSTRAINT "Ticket_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Ticket" ADD CONSTRAINT "Ticket_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "KnowledgeBaseArticle" ADD CONSTRAINT "KnowledgeBaseArticle_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "KnowledgeBaseArticle" ADD CONSTRAINT "KnowledgeBaseArticle_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Asset" ADD CONSTRAINT "Asset_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Asset" ADD CONSTRAINT "Asset_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ChangeRequest" ADD CONSTRAINT "ChangeRequest_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ChangeRequest" ADD CONSTRAINT "ChangeRequest_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "EmailConfiguration" ADD CONSTRAINT "EmailConfiguration_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CustomAssetType" ADD CONSTRAINT "CustomAssetType_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AssetTypeCustomField" ADD CONSTRAINT "AssetTypeCustomField_customAssetTypeId_fkey" FOREIGN KEY ("customAssetTypeId") REFERENCES "CustomAssetType"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Asset" ADD CONSTRAINT "Asset_customAssetTypeId_fkey" FOREIGN KEY ("customAssetTypeId") REFERENCES "CustomAssetType"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AuditLog" ADD CONSTRAINT "AuditLog_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AuditLog" ADD CONSTRAINT "AuditLog_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AuditConfig" ADD CONSTRAINT "AuditConfig_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "User" ADD CONSTRAINT "User_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "User" ADD CONSTRAINT "User_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;

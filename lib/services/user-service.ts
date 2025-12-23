@@ -81,8 +81,29 @@ export async function getUsers(filters: UserFilters = {}) {
     where.organizationId = filters.organizationId
   }
 
+  // Filter by tenant - users are assigned via TenantAssignment, not directly
   if (filters.tenantId) {
-    where.tenantId = filters.tenantId
+    // Get all user IDs assigned to this tenant
+    const tenantAssignments = await prisma.tenantAssignment.findMany({
+      where: {
+        tenantId: filters.tenantId,
+        category: null, // Only get general assignments, not category-specific
+      },
+      select: {
+        userId: true,
+      },
+      distinct: ['userId'],
+    })
+
+    const userIdsInTenant = tenantAssignments.map((a) => a.userId)
+
+    if (userIdsInTenant.length === 0) {
+      // No users in this tenant, return empty result
+      return { users: [], pagination: { page, limit, total: 0, totalPages: 0 } }
+    }
+
+    // Filter users by those assigned to the tenant
+    where.id = { in: userIdsInTenant }
   }
 
   if (search) {
@@ -113,7 +134,30 @@ export async function getUsers(filters: UserFilters = {}) {
 
   // Filter by specific user IDs (for IT Manager tenant filtering)
   if (filters.userIds && filters.userIds.length > 0) {
-    where.id = { in: filters.userIds }
+    // If tenantId is also set, intersect the two filters
+    if (where.id && 'in' in where.id) {
+      where.id = { in: (where.id.in as string[]).filter((id) => filters.userIds!.includes(id)) }
+    } else {
+      where.id = { in: filters.userIds }
+    }
+  }
+
+  // Handle sorting - some fields need special handling
+  let orderBy: any = {}
+  if (sort === 'firstName') {
+    // Sort by firstName, then lastName
+    orderBy = [
+      { firstName: order },
+      { lastName: order },
+    ]
+  } else if (sort === 'role') {
+    // For role sorting, we'll sort by the first role's name
+    // This requires a more complex query, so we'll sort by createdAt as fallback
+    // and handle role sorting in the application layer if needed
+    orderBy = { createdAt: order }
+  } else {
+    // Default sorting for other fields
+    orderBy = { [sort]: order }
   }
 
   const [users, total] = await Promise.all([
@@ -121,11 +165,12 @@ export async function getUsers(filters: UserFilters = {}) {
       where,
       skip,
       take: limit,
-      orderBy: { [sort]: order },
+      orderBy,
       include: {
         roles: {
           include: {
             role: true,
+            customRole: true,
           },
         },
       },
@@ -142,7 +187,9 @@ export async function getUsers(filters: UserFilters = {}) {
       avatar: user.avatar,
       isActive: user.isActive,
       emailVerified: user.emailVerified,
-      roles: user.roles.map((ur) => ur.role.name),
+      roles: user.roles
+        .map((ur) => ur.role?.name || (ur.customRole ? `CUSTOM:${ur.customRole.name}` : null))
+        .filter((r): r is string => r !== null),
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     })),
@@ -162,6 +209,7 @@ export async function getUserById(id: string) {
       roles: {
         include: {
           role: true,
+          customRole: true,
         },
       },
     },
@@ -179,7 +227,9 @@ export async function getUserById(id: string) {
     avatar: user.avatar,
     isActive: user.isActive,
     emailVerified: user.emailVerified,
-    roles: user.roles.map((ur) => ur.role.name),
+    roles: user.roles
+      .map((ur) => ur.role?.name || (ur.customRole ? `CUSTOM:${ur.customRole.name}` : null))
+      .filter((r): r is string => r !== null),
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   }
@@ -224,6 +274,7 @@ export async function createUser(input: CreateUserInput) {
       roles: {
         include: {
           role: true,
+          customRole: true,
         },
       },
     },
@@ -237,7 +288,9 @@ export async function createUser(input: CreateUserInput) {
     avatar: user.avatar,
     isActive: user.isActive,
     emailVerified: user.emailVerified,
-    roles: user.roles.map((ur) => ur.role.name),
+    roles: user.roles
+      .map((ur) => ur.role?.name || (ur.customRole ? `CUSTOM:${ur.customRole.name}` : null))
+      .filter((r): r is string => r !== null),
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   }
@@ -326,6 +379,7 @@ export async function updateUser(id: string, input: UpdateUserInput) {
       roles: {
         include: {
           role: true,
+          customRole: true,
         },
       },
     },
@@ -339,7 +393,9 @@ export async function updateUser(id: string, input: UpdateUserInput) {
     avatar: updatedUser.avatar,
     isActive: updatedUser.isActive,
     emailVerified: updatedUser.emailVerified,
-    roles: updatedUser.roles.map((ur) => ur.role.name),
+    roles: updatedUser.roles
+      .map((ur) => ur.role?.name || (ur.customRole ? `CUSTOM:${ur.customRole.name}` : null))
+      .filter((r): r is string => r !== null),
     createdAt: updatedUser.createdAt,
     updatedAt: updatedUser.updatedAt,
   }
@@ -379,6 +435,7 @@ export async function assignAgentToTenant(
       roles: {
         include: {
           role: true,
+          customRole: true,
         },
       },
     },
@@ -388,8 +445,8 @@ export async function assignAgentToTenant(
     throw new Error('Manager not found')
   }
 
-  const isAdmin = manager.roles.some((ur) => ur.role.name === 'ADMIN')
-  const isITManager = manager.roles.some((ur) => ur.role.name === 'IT_MANAGER')
+  const isAdmin = manager.roles.some((ur) => ur.role?.name === 'ADMIN')
+  const isITManager = manager.roles.some((ur) => ur.role?.name === 'IT_MANAGER')
 
   if (!isAdmin && !isITManager) {
     throw new Error('Only IT Managers or Admins can assign agents')
@@ -420,7 +477,7 @@ export async function assignAgentToTenant(
   }
 
   // Verify agent is actually an agent
-  const isAgent = agent.roles.some((ur) => ur.role.name === 'AGENT')
+  const isAgent = agent.roles.some((ur) => ur.role?.name === 'AGENT')
   if (!isAgent) {
     throw new Error('User is not an agent')
   }
@@ -466,6 +523,7 @@ export async function unassignAgentFromTenant(
       roles: {
         include: {
           role: true,
+          customRole: true,
         },
       },
     },
@@ -529,8 +587,8 @@ export async function canManageAgentInOrganization(
     return false
   }
 
-  const isAdmin = manager.roles.some((ur) => ur.role.name === 'ADMIN')
-  const isITManager = manager.roles.some((ur) => ur.role.name === 'IT_MANAGER')
+  const isAdmin = manager.roles.some((ur) => ur.role?.name === 'ADMIN')
+  const isITManager = manager.roles.some((ur) => ur.role?.name === 'IT_MANAGER')
 
   if (!isAdmin && !isITManager) {
     return false

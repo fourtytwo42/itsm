@@ -35,6 +35,7 @@ export async function GET(req: NextRequest) {
       role: searchParams.get('role') as RoleName | undefined,
       isActive: searchParams.get('isActive') === 'true' ? true : searchParams.get('isActive') === 'false' ? false : undefined,
       emailVerified: searchParams.get('emailVerified') === 'true' ? true : searchParams.get('emailVerified') === 'false' ? false : undefined,
+      tenantId: searchParams.get('tenantId') || undefined, // Filter by tenant if provided
       userId: authContext.user.id,
       userRoles: authContext.user.roles,
       page: parseInt(searchParams.get('page') || '1'),

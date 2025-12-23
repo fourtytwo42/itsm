@@ -94,8 +94,9 @@ export default function SideNav() {
     document.documentElement.style.setProperty('--side-nav-width', `${navWidth}px`)
   }, [navWidth])
 
-  // Hide on login/register/landing pages
-  if (pathname === '/' || pathname === '/login' || pathname === '/register' || pathname?.startsWith('/reset-password')) {
+  // Hide on login/register/landing/checkout pages
+  // Handle null/undefined pathname during navigation
+  if (!pathname || pathname === '/' || pathname === '/login' || pathname === '/register' || pathname === '/checkout' || pathname.startsWith('/reset-password')) {
     return null
   }
 
@@ -146,14 +147,14 @@ export default function SideNav() {
     { href: '/tickets', label: 'Tickets', icon: TicketIcon, iconSolid: TicketIconSolid },
     { href: '/kb', label: 'Knowledge Base', icon: BookOpenIcon, iconSolid: BookOpenIconSolid },
     { href: '/assets', label: 'Assets', icon: ComputerDesktopIcon, iconSolid: ComputerDesktopIconSolid, roles: ['AGENT', 'IT_MANAGER', 'ADMIN'] },
-    { href: '/changes', label: 'Changes', icon: ArrowsRightLeftIcon, iconSolid: ArrowsRightLeftIconSolid, roles: ['AGENT', 'IT_MANAGER', 'ADMIN'] },
     { href: '/reports', label: 'Reports', icon: ChartBarIcon, iconSolid: ChartBarIconSolid, roles: ['IT_MANAGER', 'ADMIN'] },
   ]
 
   const managerItems: NavItem[] = [
-    { href: '/manager/tenants', label: 'My Tenants', icon: UsersIcon, iconSolid: UsersIconSolid },
+    { href: '/admin/tenants', label: 'Tenants', icon: UsersIcon, iconSolid: UsersIconSolid },
     { href: '/manager/users', label: 'Users', icon: UsersIcon, iconSolid: UsersIconSolid, roles: ['IT_MANAGER'] },
-    { href: '/manager/agents', label: 'My Agents', icon: UsersIcon, iconSolid: UsersIconSolid },
+    { href: '/admin/custom-roles', label: 'Custom Roles', icon: UsersIcon, iconSolid: UsersIconSolid },
+    { href: '/admin/asset-types', label: 'Asset Types', icon: ComputerDesktopIcon, iconSolid: ComputerDesktopIconSolid },
   ]
 
   const globalAdminItems: NavItem[] = [
@@ -163,9 +164,9 @@ export default function SideNav() {
   const adminItems: NavItem[] = [
     { href: '/admin/users', label: 'Users', icon: UsersIcon, iconSolid: UsersIconSolid },
     { href: '/admin/tenants', label: 'Tenants', icon: UsersIcon, iconSolid: UsersIconSolid },
+    { href: '/admin/custom-roles', label: 'Custom Roles', icon: UsersIcon, iconSolid: UsersIconSolid },
     { href: '/admin/asset-types', label: 'Asset Types', icon: ComputerDesktopIcon, iconSolid: ComputerDesktopIconSolid },
     { href: '/admin/config', label: 'Configuration', icon: Cog6ToothIcon, iconSolid: Cog6ToothIconSolid },
-    { href: '/admin/sla', label: 'SLA Management', icon: ClockIcon, iconSolid: ClockIconSolid },
     { href: '/organization/settings', label: 'Organization Settings', icon: Cog6ToothIcon, iconSolid: Cog6ToothIconSolid },
     { href: '/organization/audit', label: 'Audit Logs', icon: ClockIcon, iconSolid: ClockIconSolid },
   ]

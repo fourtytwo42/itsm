@@ -2,13 +2,11 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { AssetType } from '@prisma/client'
 import Link from 'next/link'
 
 interface CustomAssetType {
   id: string
   name: string
-  baseType: AssetType
   description?: string
   isActive: boolean
   customFields: CustomField[]
@@ -35,11 +33,9 @@ export default function AssetTypesPage() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showFieldModal, setShowFieldModal] = useState(false)
   const [selectedAssetType, setSelectedAssetType] = useState<CustomAssetType | null>(null)
-  const [filterBaseType, setFilterBaseType] = useState<AssetType | ''>('')
 
   const [formData, setFormData] = useState({
     name: '',
-    baseType: 'HARDWARE' as AssetType,
     description: '',
   })
 
@@ -56,18 +52,13 @@ export default function AssetTypesPage() {
 
   useEffect(() => {
     loadAssetTypes()
-  }, [filterBaseType])
+  }, [])
 
   const loadAssetTypes = async () => {
     try {
       setLoading(true)
       const token = localStorage.getItem('accessToken')
-      const params = new URLSearchParams()
-      if (filterBaseType) {
-        params.append('baseType', filterBaseType)
-      }
-
-      const response = await fetch(`/api/v1/admin/asset-types?${params.toString()}`, {
+      const response = await fetch(`/api/v1/admin/asset-types`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       })
 
@@ -102,7 +93,7 @@ export default function AssetTypesPage() {
       const data = await response.json()
       if (data.success) {
         setShowCreateModal(false)
-        setFormData({ name: '', baseType: 'HARDWARE', description: '' })
+        setFormData({ name: '', description: '' })
         loadAssetTypes()
       } else {
         setError(data.error?.message || 'Failed to create asset type')
@@ -238,26 +229,6 @@ export default function AssetTypesPage() {
         </div>
       )}
 
-      <div style={{ marginBottom: '1rem' }}>
-        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>Filter by Base Type:</label>
-        <select
-          value={filterBaseType}
-          onChange={(e) => setFilterBaseType(e.target.value as AssetType | '')}
-          style={{
-            padding: '0.5rem',
-            border: '1px solid var(--border-color)',
-            borderRadius: '6px',
-            backgroundColor: 'var(--bg-primary)',
-            color: 'var(--text-primary)',
-          }}
-        >
-          <option value="">All Types</option>
-          <option value="HARDWARE">Hardware</option>
-          <option value="SOFTWARE">Software</option>
-          <option value="NETWORK_DEVICE">Network Device</option>
-          <option value="CLOUD_RESOURCE">Cloud Resource</option>
-        </select>
-      </div>
 
       <div style={{ display: 'grid', gap: '1.5rem' }}>
         {assetTypes.map((assetType) => (
@@ -273,9 +244,6 @@ export default function AssetTypesPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '1rem' }}>
               <div>
                 <h2 style={{ margin: 0, marginBottom: '0.25rem' }}>{assetType.name}</h2>
-                <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-                  Base Type: {assetType.baseType}
-                </p>
                 {assetType.description && (
                   <p style={{ margin: '0.5rem 0 0 0', color: 'var(--text-secondary)' }}>{assetType.description}</p>
                 )}
@@ -412,23 +380,6 @@ export default function AssetTypesPage() {
                   required
                   placeholder="e.g., Laptops, Desktops"
                 />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
-                  Base Type <span style={{ color: 'var(--error)' }}>*</span>
-                </label>
-                <select
-                  className="input"
-                  value={formData.baseType}
-                  onChange={(e) => setFormData({ ...formData, baseType: e.target.value as AssetType })}
-                  required
-                >
-                  <option value="HARDWARE">Hardware</option>
-                  <option value="SOFTWARE">Software</option>
-                  <option value="NETWORK_DEVICE">Network Device</option>
-                  <option value="CLOUD_RESOURCE">Cloud Resource</option>
-                </select>
               </div>
 
               <div>

@@ -9,7 +9,6 @@ interface AgentPerformance {
   ticketsResolved: number
   ticketsAssigned: number
   averageResolutionTime: number
-  slaCompliance: number
   firstResponseTime: number
 }
 
@@ -106,19 +105,6 @@ export default function ReportsPage() {
           >
             Export Agents
           </button>
-          <button
-            onClick={() => handleExport('sla')}
-            style={{
-              padding: '0.5rem 1rem',
-              backgroundColor: 'var(--accent-primary)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer',
-            }}
-          >
-            Export SLA
-          </button>
         </div>
       </div>
 
@@ -167,13 +153,12 @@ export default function ReportsPage() {
                   <th style={{ padding: '1rem', textAlign: 'left' }}>Tickets Assigned</th>
                   <th style={{ padding: '1rem', textAlign: 'left' }}>Avg Resolution (min)</th>
                   <th style={{ padding: '1rem', textAlign: 'left' }}>Avg First Response (min)</th>
-                  <th style={{ padding: '1rem', textAlign: 'left' }}>SLA Compliance</th>
                 </tr>
               </thead>
               <tbody>
                 {agents.length === 0 ? (
                   <tr>
-                    <td colSpan={6} style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                    <td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
                       No agent performance data found
                     </td>
                   </tr>
@@ -185,15 +170,6 @@ export default function ReportsPage() {
                       <td style={{ padding: '1rem' }}>{agent.ticketsAssigned}</td>
                       <td style={{ padding: '1rem' }}>{agent.averageResolutionTime}</td>
                       <td style={{ padding: '1rem' }}>{agent.firstResponseTime}</td>
-                      <td style={{ padding: '1rem' }}>
-                        <span
-                          style={{
-                            color: agent.slaCompliance >= 90 ? 'green' : agent.slaCompliance >= 75 ? 'orange' : 'red',
-                          }}
-                        >
-                          {agent.slaCompliance.toFixed(1)}%
-                        </span>
-                      </td>
                     </tr>
                   ))
                 )}

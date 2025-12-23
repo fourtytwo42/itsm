@@ -22,18 +22,23 @@ export default function ChatWidget() {
   const [loading, setLoading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   
-  // Hide this widget on tenant pages (they have their own TenantChatWidget)
-  if (pathname?.startsWith('/tenant/')) {
-    return null
-  }
+  // Check if we should hide on tenant pages and landing/login/register/checkout pages
+  // Handle null/undefined pathname during navigation
+  const shouldHide = !pathname || pathname.startsWith('/tenant/') || pathname === '/' || pathname === '/login' || pathname === '/register' || pathname === '/checkout'
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
   useEffect(() => {
+    if (shouldHide) return
     scrollToBottom()
-  }, [messages])
+  }, [messages, pathname]) // Use pathname directly instead of shouldHide
+
+  // Hide on tenant pages and landing/login/register pages - return after all hooks
+  if (shouldHide) {
+    return null
+  }
 
   const handleSend = async () => {
     if (!input.trim() || loading) return

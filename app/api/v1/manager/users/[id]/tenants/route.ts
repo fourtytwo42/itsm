@@ -140,7 +140,7 @@ export async function POST(
       )
     }
 
-    const userRole = targetUser.roles[0]?.role.name
+    const userRole = targetUser.roles[0]?.role?.name
     if (userRole === 'ADMIN' || userRole === 'IT_MANAGER') {
       return NextResponse.json(
         { success: false, error: { code: 'FORBIDDEN', message: 'Cannot assign ADMIN or IT_MANAGER users to tenants' } },

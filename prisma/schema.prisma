@@ -56,27 +56,28 @@ model User {
   emailVerified        Boolean   @default(false)
   passwordResetToken   String?   @unique
   passwordResetExpires DateTime?
-  mustChangePassword   Boolean  @default(false) // Force password change on first login
-  tenantId             String?   // Multi-tenant support (backward compatibility)
-  organizationId       String?  // User belongs to an organization
+  mustChangePassword   Boolean   @default(false) // Force password change on first login
+  tenantId             String? // Multi-tenant support (backward compatibility)
+  organizationId       String? // User belongs to an organization
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
   deletedAt            DateTime?
 
-  tenant               Tenant?   @relation("UserTenant", fields: [tenantId], references: [id], onDelete: SetNull)
-  organization         Organization? @relation("UserOrganization", fields: [organizationId], references: [id], onDelete: SetNull)
+  tenant                 Tenant?                 @relation("UserTenant", fields: [tenantId], references: [id], onDelete: SetNull)
+  organization           Organization?           @relation("UserOrganization", fields: [organizationId], references: [id], onDelete: SetNull)
   roles                  UserRole[]
   ticketsRequested       Ticket[]                @relation("TicketRequester")
   ticketsAssigned        Ticket[]                @relation("TicketAssignee")
+  ticketsEscalated       Ticket[]                @relation("TicketEscalator")
+  ticketsEscalatedTo     Ticket[]                @relation("TicketEscalatedTo")
   ticketComments         TicketComment[]
+  ticketHistory          TicketHistory[]
   assignedAssets         Asset[]                 @relation("AssetAssignee")
-  changeRequests         ChangeRequest[]         @relation("ChangeCreator")
-  changeApprovals        ChangeApproval[]
   notifications          Notification[]
   notificationPreference NotificationPreference?
   updatedSettings        SystemSetting[]
   tenantAssignments      TenantAssignment[]
-  auditLogs             AuditLog[]
+  auditLogs              AuditLog[]
 
   @@index([email])
   @@index([isActive])
@@ -96,61 +97,91 @@ model Role {
   @@index([name])
 }
 
+model CustomRole {
+  id             String   @id @default(uuid())
+  name           String // e.g., "tier-2", "noc", "senior-agent"
+  displayName    String // e.g., "Tier 2 Support", "NOC Team"
+  description    String?
+  organizationId String
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization     Organization @relation("OrganizationCustomRoles", fields: [organizationId], references: [id], onDelete: Cascade)
+  userRoles        UserRole[]
+  escalatedTickets Ticket[]     @relation("TicketEscalationRole")
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@index([isActive])
+}
+
 model UserRole {
-  id        String   @id @default(uuid())
-  userId    String
-  roleId    String
-  createdAt DateTime @default(now())
+  id           String   @id @default(uuid())
+  userId       String
+  roleId       String?
+  customRoleId String?
+  createdAt    DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       Role?       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  customRole CustomRole? @relation(fields: [customRoleId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, roleId])
   @@index([userId])
   @@index([roleId])
+  @@index([customRoleId])
 }
 
 model Ticket {
-  id           String         @id @default(uuid())
-  ticketNumber String         @unique
-  subject      String
-  description  String
-  status       TicketStatus   @default(NEW)
-  priority     TicketPriority @default(MEDIUM)
-  requesterId  String?
-  requesterEmail String?      // For unauthenticated users
-  requesterName  String?      // For unauthenticated users
-  publicTokenId String?       // For tickets created by anonymous users with public JWT
-  assigneeId   String?
-  tenantId     String?
-  organizationId String?      // Ticket belongs to an organization
-  category     String?
-  customFields Json?
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-  closedAt     DateTime?
+  id                    String         @id @default(uuid())
+  ticketNumber          String         @unique
+  subject               String
+  description           String
+  status                TicketStatus   @default(NEW)
+  priority              TicketPriority @default(MEDIUM)
+  requesterId           String?
+  requesterEmail        String? // For unauthenticated users
+  requesterName         String? // For unauthenticated users
+  publicTokenId         String? // For tickets created by anonymous users with public JWT
+  assigneeId            String?
+  tenantId              String?
+  organizationId        String? // Ticket belongs to an organization
+  category              String?
+  customFields          Json?
+  // Escalation fields
+  escalatedToRoleId     String? // Custom role ID to escalate to
+  escalatedToSystemRole RoleName? // System role to escalate to (AGENT, IT_MANAGER, etc.)
+  escalatedToUserId     String? // Specific user ID to escalate to
+  escalatedAt           DateTime?
+  escalatedBy           String? // User ID who escalated
+  escalationNote        String? // Optional note about escalation
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+  closedAt              DateTime?
 
-  requester      User?                 @relation("TicketRequester", fields: [requesterId], references: [id], onDelete: Cascade)
-  assignee       User?                 @relation("TicketAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-  tenant         Tenant?               @relation(fields: [tenantId], references: [id], onDelete: SetNull)
-  organization   Organization?         @relation("TicketOrganization", fields: [organizationId], references: [id], onDelete: SetNull)
-  comments       TicketComment[]
-  assetRelations TicketAssetRelation[]
-  relatedChanges ChangeRequest[]
-  slaPolicy      SLAPolicy?            @relation(fields: [slaPolicyId], references: [id], onDelete: SetNull)
-  slaPolicyId    String?
-  slaTracking    SLATracking?
+  requester             User?                 @relation("TicketRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  assignee              User?                 @relation("TicketAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  escalatedByUser       User?                 @relation("TicketEscalator", fields: [escalatedBy], references: [id], onDelete: SetNull)
+  escalatedToUser       User?                 @relation("TicketEscalatedTo", fields: [escalatedToUserId], references: [id], onDelete: SetNull)
+  escalatedToCustomRole CustomRole?           @relation("TicketEscalationRole", fields: [escalatedToRoleId], references: [id], onDelete: SetNull)
+  tenant                Tenant?               @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  organization          Organization?         @relation("TicketOrganization", fields: [organizationId], references: [id], onDelete: SetNull)
+  comments              TicketComment[]
+  assetRelations        TicketAssetRelation[]
+  history               TicketHistory[]
 
   @@index([ticketNumber])
   @@index([status])
   @@index([priority])
   @@index([requesterId])
   @@index([assigneeId])
-  @@index([slaPolicyId])
   @@index([tenantId])
   @@index([category])
   @@index([organizationId])
   @@index([publicTokenId])
+  @@index([escalatedToRoleId])
+  @@index([escalatedToSystemRole])
+  @@index([escalatedToUserId])
 }
 
 model TicketComment {
@@ -167,6 +198,37 @@ model TicketComment {
   @@index([authorId])
 }
 
+enum TicketHistoryType {
+  CREATED
+  ASSIGNED
+  UNASSIGNED
+  STATUS_CHANGED
+  PRIORITY_CHANGED
+  ESCALATED
+  TRANSFERRED
+  COMMENT_ADDED
+}
+
+model TicketHistory {
+  id        String            @id @default(uuid())
+  ticketId  String
+  type      TicketHistoryType
+  userId    String // User who performed the action
+  oldValue  String? // Previous value (e.g., old status, old assignee name)
+  newValue  String? // New value (e.g., new status, new assignee name)
+  note      String? // Additional note/description
+  metadata  Json? // Additional context (e.g., escalated to role, transferred from/to)
+  createdAt DateTime          @default(now())
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+  @@index([userId])
+  @@index([type])
+  @@index([createdAt])
+}
+
 model EmailConfiguration {
   id                     String          @id @default(uuid())
   providerName           String?
@@ -177,15 +239,15 @@ model EmailConfiguration {
   password               String
   encryption             EmailEncryption @default(SSL)
   pollingIntervalMinutes Int             @default(5)
-  organizationId         String?         // Organization-specific email config
+  organizationId         String? // Organization-specific email config
   createdAt              DateTime        @default(now())
   updatedAt              DateTime        @updatedAt
 
-  organization           Organization?   @relation("OrganizationEmailConfig", fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization? @relation("OrganizationEmailConfig", fields: [organizationId], references: [id], onDelete: Cascade)
 
+  @@unique([organizationId]) // One email config per organization
   @@index([protocol])
   @@index([organizationId])
-  @@unique([organizationId]) // One email config per organization
 }
 
 enum ArticleStatus {
@@ -202,8 +264,8 @@ model KnowledgeBaseArticle {
   tags            String[]
   helpfulCount    Int                    @default(0)
   notHelpfulCount Int                    @default(0)
-  tenantId        String?                // Multi-tenant support
-  organizationId String?                // Article belongs to an organization
+  tenantId        String? // Multi-tenant support
+  organizationId  String? // Article belongs to an organization
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
   embedding       Unsupported("vector")?
@@ -245,79 +307,41 @@ enum TicketAssetRelationType {
   RELATED_TO
 }
 
-enum ChangeType {
-  STANDARD
-  NORMAL
-  EMERGENCY
-}
-
-enum ChangeStatus {
-  DRAFT
-  SUBMITTED
-  IN_REVIEW
-  APPROVED
-  REJECTED
-  IMPLEMENTED
-  CLOSED
-}
-
-enum ChangePriority {
-  LOW
-  MEDIUM
-  HIGH
-  CRITICAL
-}
-
-enum RiskLevel {
-  LOW
-  MEDIUM
-  HIGH
-  CRITICAL
-}
-
-enum ApprovalStatus {
-  PENDING
-  APPROVED
-  REJECTED
-}
-
-// Custom Asset Types - Allows orgs to create custom asset types like "Laptops", "Desktops" under HARDWARE
+// Custom Asset Types - Allows orgs to create custom asset types like "Laptops", "Desktops", "Servers"
 model CustomAssetType {
-  id           String   @id @default(uuid())
-  name         String   // e.g., "Laptops", "Desktops", "Servers"
-  baseType     AssetType // The base type this custom type belongs to (HARDWARE, SOFTWARE, etc.)
+  id             String   @id @default(uuid())
+  name           String // e.g., "Laptops", "Desktops", "Servers"
   organizationId String
-  description  String?
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  description    String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   // Relations
-  organization Organization? @relation("CustomAssetTypeOrganization", fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization?          @relation("CustomAssetTypeOrganization", fields: [organizationId], references: [id], onDelete: Cascade)
   customFields AssetTypeCustomField[] @relation("AssetTypeCustomFields")
-  assets       Asset[] @relation("AssetCustomType")
+  assets       Asset[]                @relation("AssetCustomType")
 
-  @@unique([organizationId, name, baseType]) // Unique per org, name, and base type
+  @@unique([organizationId, name]) // Unique per org and name
   @@index([organizationId])
-  @@index([baseType])
   @@index([isActive])
 }
 
 // Custom Fields for Asset Types
 model AssetTypeCustomField {
-  id              String   @id @default(uuid())
+  id                String   @id @default(uuid())
   customAssetTypeId String
-  fieldName       String   // Internal field name (e.g., "screenSize", "ram")
-  label           String   // Display label (e.g., "Screen Size", "RAM")
-  fieldType       String   // "text", "number", "date", "select", "textarea", "checkbox"
-  required        Boolean  @default(false)
-  defaultValue    String?
-  options         Json?    // For select/checkbox types - array of options
-  placeholder     String?
-  order           Int      @default(0)
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  fieldName         String // Internal field name (e.g., "screenSize", "ram")
+  label             String // Display label (e.g., "Screen Size", "RAM")
+  fieldType         String // "text", "number", "date", "select", "textarea", "checkbox"
+  required          Boolean  @default(false)
+  defaultValue      String?
+  options           Json? // For select/checkbox types - array of options
+  placeholder       String?
+  order             Int      @default(0)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   // Relations
   customAssetType CustomAssetType @relation("AssetTypeCustomFields", fields: [customAssetTypeId], references: [id], onDelete: Cascade)
@@ -328,18 +352,18 @@ model AssetTypeCustomField {
 }
 
 model Asset {
-  id           String      @id @default(uuid())
-  assetNumber  String      @unique
-  name         String
-  type         AssetType
+  id                String      @id @default(uuid())
+  assetNumber       String      @unique
+  name              String
+  type              AssetType? // Optional - can be derived from customAssetType if needed
   customAssetTypeId String? // Link to custom asset type (e.g., "Laptops", "Desktops")
-  category     String?
-  manufacturer String?
-  model        String?
-  serialNumber String?
-  status       AssetStatus @default(ACTIVE)
-  tenantId     String?     // Multi-tenant support
-  organizationId String?   // Asset belongs to an organization
+  category          String?
+  manufacturer      String?
+  model             String?
+  serialNumber      String?
+  status            AssetStatus @default(ACTIVE)
+  tenantId          String? // Multi-tenant support
+  organizationId    String? // Asset belongs to an organization
 
   // Assignment
   assignedToId String?
@@ -421,152 +445,11 @@ model TicketAssetRelation {
   @@index([assetId])
 }
 
-model ChangeRequest {
-  id           String         @id @default(uuid())
-  changeNumber String         @unique
-  title        String
-  description  String         @db.Text
-  type         ChangeType
-  status       ChangeStatus   @default(DRAFT)
-  priority     ChangePriority @default(MEDIUM)
-  riskLevel    RiskLevel?
-  tenantId     String?        // Multi-tenant support
-  organizationId String?      // Change request belongs to an organization
-
-  // Request Info
-  requestedById String
-  requestedAt   DateTime @default(now())
-
-  // Implementation
-  plannedStartDate    DateTime?
-  plannedEndDate      DateTime?
-  actualStartDate     DateTime?
-  actualEndDate       DateTime?
-  implementationNotes String?   @db.Text
-
-  // Related Ticket
-  relatedTicketId String?
-
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
-
-  // Relations
-  tenant        Tenant?          @relation("ChangeTenant", fields: [tenantId], references: [id], onDelete: SetNull)
-  organization  Organization?    @relation("ChangeOrganization", fields: [organizationId], references: [id], onDelete: SetNull)
-  requester     User             @relation("ChangeCreator", fields: [requestedById], references: [id], onDelete: Cascade)
-  relatedTicket Ticket?          @relation(fields: [relatedTicketId], references: [id], onDelete: SetNull)
-  approvals     ChangeApproval[]
-
-  @@index([changeNumber])
-  @@index([status])
-  @@index([type])
-  @@index([requestedById])
-  @@index([createdAt])
-  @@index([deletedAt])
-  @@index([tenantId])
-  @@index([organizationId])
-}
-
-model ChangeApproval {
-  id              String         @id @default(uuid())
-  changeRequestId String
-  approverId      String
-  stage           Int
-  status          ApprovalStatus @default(PENDING)
-  comments        String?        @db.Text
-  approvedAt      DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  changeRequest ChangeRequest @relation(fields: [changeRequestId], references: [id], onDelete: Cascade)
-  approver      User          @relation(fields: [approverId], references: [id], onDelete: Cascade)
-
-  @@unique([changeRequestId, approverId, stage])
-  @@index([changeRequestId])
-  @@index([approverId])
-  @@index([status])
-}
-
-model SLAPolicy {
-  id                String         @id @default(uuid())
-  name              String
-  description       String?        @db.Text
-  priority          TicketPriority
-  firstResponseTime Int // Minutes
-  resolutionTime    Int // Minutes
-  businessHours     Json? // Business hours definition
-  active            Boolean        @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  tickets         Ticket[]
-  tracking        SLATracking[]
-  escalationRules EscalationRule[]
-
-  @@index([priority])
-  @@index([active])
-}
-
-model SLATracking {
-  id                    String    @id @default(uuid())
-  ticketId              String    @unique
-  slaPolicyId           String
-  firstResponseTarget   DateTime?
-  firstResponseActual   DateTime?
-  firstResponseBreached Boolean   @default(false)
-  resolutionTarget      DateTime?
-  resolutionActual      DateTime?
-  resolutionBreached    Boolean   @default(false)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  ticket    Ticket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  slaPolicy SLAPolicy @relation(fields: [slaPolicyId], references: [id], onDelete: Cascade)
-
-  @@index([ticketId])
-  @@index([slaPolicyId])
-  @@index([firstResponseBreached])
-  @@index([resolutionBreached])
-}
-
-model EscalationRule {
-  id               String          @id @default(uuid())
-  slaPolicyId      String
-  name             String
-  description      String?         @db.Text
-  triggerCondition String // "FIRST_RESPONSE_BREACHED", "RESOLUTION_BREACHED", "NO_RESPONSE", "NO_ASSIGNEE"
-  triggerTime      Int? // Minutes (for time-based triggers)
-  action           String // "ASSIGN_TO_MANAGER", "INCREASE_PRIORITY", "NOTIFY_STAKEHOLDERS", "CREATE_CHANGE"
-  targetUserId     String? // For assign actions
-  newPriority      TicketPriority? // For priority increase
-  active           Boolean         @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  slaPolicy SLAPolicy @relation(fields: [slaPolicyId], references: [id], onDelete: Cascade)
-
-  @@index([slaPolicyId])
-  @@index([active])
-}
-
 enum NotificationType {
   TICKET_CREATED
   TICKET_UPDATED
   TICKET_ASSIGNED
   TICKET_COMMENT
-  CHANGE_REQUEST_CREATED
-  CHANGE_REQUEST_APPROVED
-  CHANGE_REQUEST_REJECTED
-  SLA_BREACHED
   ESCALATION
 }
 
@@ -598,21 +481,17 @@ model Notification {
 }
 
 model NotificationPreference {
-  id                    String   @id @default(uuid())
-  userId                String   @unique
-  emailEnabled          Boolean  @default(true)
-  pushEnabled           Boolean  @default(true)
-  ticketCreated         Boolean  @default(true)
-  ticketUpdated         Boolean  @default(true)
-  ticketAssigned        Boolean  @default(true)
-  ticketComment         Boolean  @default(true)
-  changeRequestCreated  Boolean  @default(true)
-  changeRequestApproved Boolean  @default(true)
-  changeRequestRejected Boolean  @default(true)
-  slaBreached           Boolean  @default(true)
-  escalation            Boolean  @default(true)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  emailEnabled   Boolean  @default(true)
+  pushEnabled    Boolean  @default(true)
+  ticketCreated  Boolean  @default(true)
+  ticketUpdated  Boolean  @default(true)
+  ticketAssigned Boolean  @default(true)
+  ticketComment  Boolean  @default(true)
+  escalation     Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -653,7 +532,7 @@ model CustomField {
   required     Boolean  @default(false)
   defaultValue String?
   options      Json? // For select/checkbox types
-  entityType   String // "ticket", "asset", "change", "user"
+  entityType   String // "ticket", "asset", "user"
   order        Int      @default(0)
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
@@ -690,27 +569,26 @@ enum CustomFieldType {
 }
 
 model Tenant {
-  id            String   @id @default(uuid())
-  name          String
-  slug          String   @unique
-  logo          String?
-  description   String?
-  requiresLogin Boolean  @default(false)
-  isActive      Boolean  @default(true)
+  id             String   @id @default(uuid())
+  name           String
+  slug           String   @unique
+  logo           String?
+  description    String?
+  requiresLogin  Boolean  @default(false)
+  isActive       Boolean  @default(true)
   organizationId String? // Tenant belongs to an organization (nullable for migration)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   categories   TenantCategory[]
   kbArticles   TenantKBArticle[]
   customFields TenantCustomField[]
   assignments  TenantAssignment[]
   tickets      Ticket[]
-  users        User[]            @relation("UserTenant")
-  assets       Asset[]           @relation("AssetTenant")
-  changes      ChangeRequest[]   @relation("ChangeTenant")
+  users        User[]                 @relation("UserTenant")
+  assets       Asset[]                @relation("AssetTenant")
   kbArticles2  KnowledgeBaseArticle[] @relation("KBArticleTenant")
-  organization Organization?     @relation("TenantOrganization", fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization?          @relation("TenantOrganization", fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([slug])
   @@index([isActive])
@@ -790,16 +668,16 @@ model Organization {
   updatedAt   DateTime @updatedAt
 
   // Relations
-  users       User[]           @relation("UserOrganization")
-  tenants     Tenant[]         @relation("TenantOrganization")
-  kbArticles  KnowledgeBaseArticle[] @relation("KBArticleOrganization")
-  changes     ChangeRequest[]  @relation("ChangeOrganization")
-  assets      Asset[]          @relation("AssetOrganization")
-  tickets     Ticket[]         @relation("TicketOrganization")
-  auditLogs   AuditLog[]       @relation("AuditLogOrganization")
-  auditConfig AuditConfig?     @relation("AuditConfigOrganization")
-  customAssetTypes CustomAssetType[] @relation("CustomAssetTypeOrganization")
-  emailConfig EmailConfiguration? @relation("OrganizationEmailConfig")
+  users            User[]                 @relation("UserOrganization")
+  tenants          Tenant[]               @relation("TenantOrganization")
+  kbArticles       KnowledgeBaseArticle[] @relation("KBArticleOrganization")
+  assets           Asset[]                @relation("AssetOrganization")
+  tickets          Ticket[]               @relation("TicketOrganization")
+  auditLogs        AuditLog[]             @relation("AuditLogOrganization")
+  auditConfig      AuditConfig?           @relation("AuditConfigOrganization")
+  customAssetTypes CustomAssetType[]      @relation("CustomAssetTypeOrganization")
+  emailConfig      EmailConfiguration?    @relation("OrganizationEmailConfig")
+  customRoles      CustomRole[]           @relation("OrganizationCustomRoles")
 
   @@index([slug])
   @@index([isActive])
@@ -815,67 +693,63 @@ enum AuditEventType {
   USER_DEACTIVATED
   USER_PASSWORD_RESET
   USER_ROLE_CHANGED
-  
+
   // Organization Events
   ORGANIZATION_CREATED
   ORGANIZATION_UPDATED
   ORGANIZATION_DELETED
-  
+
   // Tenant Events
   TENANT_CREATED
   TENANT_UPDATED
   TENANT_DELETED
   TENANT_USER_ASSIGNED
   TENANT_USER_UNASSIGNED
-  
+
   // Ticket Events
   TICKET_CREATED
   TICKET_UPDATED
   TICKET_DELETED
   TICKET_ASSIGNED
+  TICKET_UNASSIGNED
   TICKET_STATUS_CHANGED
   TICKET_PRIORITY_CHANGED
   TICKET_COMMENT_ADDED
-  
+  TICKET_ESCALATED
+  TICKET_TRANSFERRED
+
   // KB Events
   KB_ARTICLE_CREATED
   KB_ARTICLE_UPDATED
   KB_ARTICLE_DELETED
-  
+
   // Asset Events
   ASSET_CREATED
   ASSET_UPDATED
   ASSET_DELETED
   ASSET_ASSIGNED
-  
-  // Change Events
-  CHANGE_CREATED
-  CHANGE_UPDATED
-  CHANGE_DELETED
-  CHANGE_APPROVED
-  CHANGE_REJECTED
-  
+
   // Permission Events
   PERMISSION_GRANTED
   PERMISSION_REVOKED
 }
 
 model AuditLog {
-  id            String         @id @default(uuid())
-  organizationId String?      // null for global admin actions
-  eventType     AuditEventType
-  entityType    String        // "User", "Ticket", "Tenant", etc.
-  entityId      String?
-  userId        String        // Who performed the action
-  userEmail     String        // Denormalized for historical accuracy
-  description   String        @db.Text
-  metadata      Json?         // Additional context (old values, new values, etc.)
-  ipAddress     String?
-  userAgent     String?
-  createdAt     DateTime      @default(now())
+  id             String         @id @default(uuid())
+  organizationId String? // null for global admin actions
+  eventType      AuditEventType
+  entityType     String // "User", "Ticket", "Tenant", etc.
+  entityId       String?
+  userId         String // Who performed the action
+  userEmail      String // Denormalized for historical accuracy
+  description    String         @db.Text
+  metadata       Json? // Additional context (old values, new values, etc.)
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime       @default(now())
 
-  organization  Organization?  @relation("AuditLogOrganization", fields: [organizationId], references: [id], onDelete: Cascade)
-  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization? @relation("AuditLogOrganization", fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
   @@index([eventType])
@@ -885,15 +759,15 @@ model AuditLog {
 }
 
 model AuditConfig {
-  id            String   @id @default(uuid())
-  organizationId String  @unique
-  enabled       Boolean  @default(true)
-  events        AuditEventType[] // Which events to track
-  retentionDays Int?    // How long to keep logs (null = forever)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id             String           @id @default(uuid())
+  organizationId String           @unique
+  enabled        Boolean          @default(true)
+  events         AuditEventType[] // Which events to track
+  retentionDays  Int? // How long to keep logs (null = forever)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
-  organization  Organization @relation("AuditConfigOrganization", fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization @relation("AuditConfigOrganization", fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
 }

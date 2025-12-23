@@ -16,6 +16,10 @@ interface Asset {
     firstName?: string
     lastName?: string
   }
+  customAssetType?: {
+    id: string
+    name: string
+  }
 }
 
 export default function AssetsPage() {
@@ -194,7 +198,7 @@ export default function AssetsPage() {
                   <tr key={asset.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
                     <td style={{ padding: '1rem' }}>{asset.assetNumber}</td>
                     <td style={{ padding: '1rem' }}>{asset.name}</td>
-                    <td style={{ padding: '1rem' }}>{asset.type}</td>
+                    <td style={{ padding: '1rem' }}>{asset.customAssetType?.name || asset.type || 'N/A'}</td>
                     <td style={{ padding: '1rem' }}>{asset.status}</td>
                     <td style={{ padding: '1rem' }}>
                       {asset.assignedTo

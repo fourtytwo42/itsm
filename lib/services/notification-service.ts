@@ -56,10 +56,6 @@ function getPreferenceForType(
     ticketUpdated: boolean
     ticketAssigned: boolean
     ticketComment: boolean
-    changeRequestCreated: boolean
-    changeRequestApproved: boolean
-    changeRequestRejected: boolean
-    slaBreached: boolean
     escalation: boolean
   },
   type: NotificationType
@@ -73,14 +69,6 @@ function getPreferenceForType(
       return preferences.ticketAssigned
     case NotificationType.TICKET_COMMENT:
       return preferences.ticketComment
-    case NotificationType.CHANGE_REQUEST_CREATED:
-      return preferences.changeRequestCreated
-    case NotificationType.CHANGE_REQUEST_APPROVED:
-      return preferences.changeRequestApproved
-    case NotificationType.CHANGE_REQUEST_REJECTED:
-      return preferences.changeRequestRejected
-    case NotificationType.SLA_BREACHED:
-      return preferences.slaBreached
     case NotificationType.ESCALATION:
       return preferences.escalation
     default:
@@ -167,10 +155,6 @@ export async function getNotificationPreferences(userId: string) {
         ticketUpdated: true,
         ticketAssigned: true,
         ticketComment: true,
-        changeRequestCreated: true,
-        changeRequestApproved: true,
-        changeRequestRejected: true,
-        slaBreached: true,
         escalation: true,
       },
     })
@@ -188,10 +172,6 @@ export async function updateNotificationPreferences(
     ticketUpdated: boolean
     ticketAssigned: boolean
     ticketComment: boolean
-    changeRequestCreated: boolean
-    changeRequestApproved: boolean
-    changeRequestRejected: boolean
-    slaBreached: boolean
     escalation: boolean
   }>
 ) {
@@ -206,10 +186,6 @@ export async function updateNotificationPreferences(
       ticketUpdated: true,
       ticketAssigned: true,
       ticketComment: true,
-      changeRequestCreated: true,
-      changeRequestApproved: true,
-      changeRequestRejected: true,
-      slaBreached: true,
       escalation: true,
       ...updates,
     },

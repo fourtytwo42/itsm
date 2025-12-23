@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { RoleName } from '@prisma/client'
+import { ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/24/outline'
 
 interface User {
   id: string
@@ -39,11 +40,16 @@ export default function AgentUsersPage() {
     search: '',
     role: '',
     isActive: '',
+    tenantId: '',
   })
+  const [tenants, setTenants] = useState<Tenant[]>([])
+  const [sortField, setSortField] = useState<string>('createdAt')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
 
   useEffect(() => {
     loadUsers()
-  }, [filters])
+    loadTenants()
+  }, [filters, sortField, sortOrder])
 
   // Load tenant assignments for all users (for display in table)
   useEffect(() => {
@@ -51,6 +57,21 @@ export default function AgentUsersPage() {
       loadAllUserTenantAssignments()
     }
   }, [users])
+
+  const loadTenants = async () => {
+    try {
+      const token = localStorage.getItem('accessToken')
+      const response = await fetch('/api/v1/admin/tenants', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      const data = await response.json()
+      if (data.success) {
+        setTenants(data.data.tenants || data.data || [])
+      }
+    } catch (err) {
+      console.error('Failed to load tenants:', err)
+    }
+  }
 
   const loadUsers = async () => {
     try {
@@ -60,8 +81,11 @@ export default function AgentUsersPage() {
       if (filters.search) params.append('search', filters.search)
       if (filters.role) params.append('role', filters.role)
       if (filters.isActive !== '') params.append('isActive', filters.isActive)
+      if (filters.tenantId) params.append('tenantId', filters.tenantId)
+      params.append('sort', sortField)
+      params.append('order', sortOrder)
 
-      const response = await fetch(`/api/v1/admin/users?${params.toString()}`, {
+      const response = await fetch(`/api/v1/agent/users?${params.toString()}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       })
 
@@ -97,8 +121,8 @@ export default function AgentUsersPage() {
     await Promise.all(
       usersToLoad.map(async (user) => {
           try {
-            // Use admin endpoint to get tenant assignments
-            const response = await fetch(`/api/v1/admin/users/${user.id}/tenants`, {
+            // Use agent endpoint to get tenant assignments
+            const response = await fetch(`/api/v1/agent/users/${user.id}/tenants`, {
               headers: token ? { Authorization: `Bearer ${token}` } : {},
             })
             const data = await response.json()
@@ -112,6 +136,41 @@ export default function AgentUsersPage() {
     )
     setUserTenantMap(newMap)
   }
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortField(field)
+      setSortOrder('desc')
+    }
+  }
+
+  const SortableHeader = ({ field, label, align = 'left' }: { field: string; label: string; align?: 'left' | 'center' | 'right' }) => (
+    <th
+      style={{
+        padding: '0.875rem 1rem',
+        textAlign: align,
+        fontWeight: 600,
+        fontSize: '0.875rem',
+        color: 'var(--text-secondary)',
+        cursor: 'pointer',
+        userSelect: 'none',
+      }}
+      onClick={() => handleSort(field)}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', justifyContent: align === 'right' ? 'flex-end' : align === 'center' ? 'center' : 'flex-start' }}>
+        {label}
+        {sortField === field && (
+          sortOrder === 'asc' ? (
+            <ChevronUpIcon style={{ width: '0.875rem', height: '0.875rem' }} />
+          ) : (
+            <ChevronDownIcon style={{ width: '0.875rem', height: '0.875rem' }} />
+          )
+        )}
+      </div>
+    </th>
+  )
 
   if (loading) {
     return <div style={{ padding: '2rem' }}>Loading users...</div>
@@ -170,6 +229,19 @@ export default function AgentUsersPage() {
             <option value="true">Active</option>
             <option value="false">Inactive</option>
           </select>
+          <select
+            value={filters.tenantId}
+            onChange={(e) => setFilters({ ...filters, tenantId: e.target.value })}
+            className="input"
+            style={{ minWidth: '150px', maxWidth: '200px' }}
+          >
+            <option value="">All Tenants</option>
+            {tenants.map((tenant) => (
+              <option key={tenant.id} value={tenant.id}>
+                {tenant.name}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -187,13 +259,13 @@ export default function AgentUsersPage() {
                 borderBottom: '2px solid var(--border-color)',
                 backgroundColor: 'var(--bg-secondary)',
               }}>
-                <th style={{ padding: '0.875rem 1rem', textAlign: 'left', fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Email</th>
-                <th style={{ padding: '0.875rem 1rem', textAlign: 'left', fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Name</th>
-                <th style={{ padding: '0.875rem 1rem', textAlign: 'left', fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Role</th>
+                <SortableHeader field="email" label="Email" />
+                <SortableHeader field="firstName" label="Name" />
+                <SortableHeader field="role" label="Role" />
                 <th style={{ padding: '0.875rem 1rem', textAlign: 'left', fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Tenants</th>
-                <th style={{ padding: '0.875rem 1rem', textAlign: 'left', fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Status</th>
-                <th style={{ padding: '0.875rem 1rem', textAlign: 'center', fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Verified</th>
-                <th style={{ padding: '0.875rem 1rem', textAlign: 'left', fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Created</th>
+                <SortableHeader field="isActive" label="Status" />
+                <SortableHeader field="emailVerified" label="Verified" align="center" />
+                <SortableHeader field="createdAt" label="Created" />
               </tr>
             </thead>
             <tbody>

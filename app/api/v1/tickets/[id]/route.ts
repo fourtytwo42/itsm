@@ -3,7 +3,9 @@ import { z } from 'zod'
 import { getTicketById, updateTicket, addTicketComment } from '@/lib/services/ticket-service'
 import { getAuthContext, requireAuth } from '@/lib/middleware/auth'
 import { auditLog } from '@/lib/middleware/audit'
-import { TicketPriority, TicketStatus, AuditEventType } from '@prisma/client'
+import { createTicketHistory } from '@/lib/services/ticket-history-service'
+import { TicketPriority, TicketStatus, AuditEventType, TicketHistoryType } from '@prisma/client'
+import prisma from '@/lib/prisma'
 
 const idSchema = z.object({
   id: z.string().uuid(),
@@ -104,13 +106,21 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const body = await request.json()
     const validated = updateSchema.parse(body)
 
-    // Get old ticket data for audit
+    // Get old ticket data for audit and history
     const oldTicket = await getTicketById(id)
 
     const updated = await updateTicket(id, validated)
 
-    // Log audit events for status and priority changes
+    // Log ticket history and audit events for all changes
     if (validated.status && oldTicket && oldTicket.status !== validated.status) {
+      await createTicketHistory({
+        ticketId: id,
+        type: TicketHistoryType.STATUS_CHANGED,
+        userId: auth.user.id,
+        oldValue: oldTicket.status,
+        newValue: validated.status,
+      })
+
       await auditLog(
         AuditEventType.TICKET_STATUS_CHANGED,
         'Ticket',
@@ -124,6 +134,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     if (validated.priority && oldTicket && oldTicket.priority !== validated.priority) {
+      await createTicketHistory({
+        ticketId: id,
+        type: TicketHistoryType.PRIORITY_CHANGED,
+        userId: auth.user.id,
+        oldValue: oldTicket.priority,
+        newValue: validated.priority,
+      })
+
       await auditLog(
         AuditEventType.TICKET_PRIORITY_CHANGED,
         'Ticket',
@@ -137,13 +155,46 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     if (validated.assigneeId !== undefined && oldTicket && oldTicket.assigneeId !== validated.assigneeId) {
+      // Get assignee names for history
+      const oldAssignee = oldTicket.assigneeId
+        ? await prisma.user.findUnique({
+            where: { id: oldTicket.assigneeId },
+            select: { email: true, firstName: true, lastName: true },
+          })
+        : null
+
+      const newAssignee = validated.assigneeId
+        ? await prisma.user.findUnique({
+            where: { id: validated.assigneeId },
+            select: { email: true, firstName: true, lastName: true },
+          })
+        : null
+
+      const oldAssigneeName = oldAssignee
+        ? `${oldAssignee.firstName || ''} ${oldAssignee.lastName || ''}`.trim() || oldAssignee.email
+        : 'Unassigned'
+
+      const newAssigneeName = newAssignee
+        ? `${newAssignee.firstName || ''} ${newAssignee.lastName || ''}`.trim() || newAssignee.email
+        : 'Unassigned'
+
+      await createTicketHistory({
+        ticketId: id,
+        type: validated.assigneeId ? TicketHistoryType.ASSIGNED : TicketHistoryType.UNASSIGNED,
+        userId: auth.user.id,
+        oldValue: oldAssigneeName,
+        newValue: newAssigneeName,
+      })
+
       await auditLog(
-        AuditEventType.TICKET_ASSIGNED,
+        validated.assigneeId ? AuditEventType.TICKET_ASSIGNED : AuditEventType.TICKET_UNASSIGNED,
         'Ticket',
         id,
         auth.user.id,
         auth.user.email,
-        `Assigned ticket ${updated.ticketNumber} to ${validated.assigneeId || 'unassigned'}`,
+        validated.assigneeId
+          ? `Assigned ticket ${updated.ticketNumber} to ${newAssigneeName}`
+          : `Unassigned ticket ${updated.ticketNumber} from ${oldAssigneeName}`,
         { ticketId: id, ticketNumber: updated.ticketNumber, oldAssigneeId: oldTicket.assigneeId, newAssigneeId: validated.assigneeId },
         request
       )

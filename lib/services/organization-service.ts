@@ -170,7 +170,6 @@ export async function getOrganizationById(id: string) {
           tickets: true,
           kbArticles: true,
           assets: true,
-          changes: true,
         },
       },
     },
@@ -265,13 +264,13 @@ export async function canManageOrganization(
     return false
   }
 
-  const isGlobalAdmin = user.roles.some((ur) => ur.role.name === 'GLOBAL_ADMIN')
+  const isGlobalAdmin = user.roles.some((ur) => ur.role?.name === 'GLOBAL_ADMIN')
   if (isGlobalAdmin) {
     return true
   }
 
   // Check if user is admin of this organization
-  const isAdmin = user.roles.some((ur) => ur.role.name === 'ADMIN')
+  const isAdmin = user.roles.some((ur) => ur.role?.name === 'ADMIN')
   if (isAdmin && user.organizationId === organizationId) {
     return true
   }

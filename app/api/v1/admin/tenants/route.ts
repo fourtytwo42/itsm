@@ -19,9 +19,13 @@ export async function GET(request: NextRequest) {
     const auth = await getAuthContext(request)
     requireAuth(auth)
 
-    if (!auth.user.roles.includes('ADMIN')) {
+    // Allow ADMIN or IT_MANAGER
+    const isAdmin = auth.user.roles.includes('ADMIN')
+    const isITManager = auth.user.roles.includes('IT_MANAGER')
+    
+    if (!isAdmin && !isITManager) {
       return NextResponse.json(
-        { success: false, error: { code: 'FORBIDDEN', message: 'Admin access required' } },
+        { success: false, error: { code: 'FORBIDDEN', message: 'Admin or IT Manager access required' } },
         { status: 403 }
       )
     }
@@ -49,9 +53,13 @@ export async function POST(request: NextRequest) {
     const auth = await getAuthContext(request)
     requireAuth(auth)
 
-    if (!auth.user.roles.includes('ADMIN')) {
+    // Allow ADMIN or IT_MANAGER
+    const isAdmin = auth.user.roles.includes('ADMIN')
+    const isITManager = auth.user.roles.includes('IT_MANAGER')
+    
+    if (!isAdmin && !isITManager) {
       return NextResponse.json(
-        { success: false, error: { code: 'FORBIDDEN', message: 'Admin access required' } },
+        { success: false, error: { code: 'FORBIDDEN', message: 'Admin or IT Manager access required' } },
         { status: 403 }
       )
     }

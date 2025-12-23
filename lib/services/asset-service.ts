@@ -8,21 +8,9 @@ import {
 
 export interface CreateAssetInput {
   name: string
-  type: AssetType
-  customAssetTypeId?: string
-  category?: string
-  manufacturer?: string
-  model?: string
-  serialNumber?: string
+  customAssetTypeId: string // Required - must select an asset type
   status?: AssetStatus
   assignedToId?: string
-  location?: string
-  building?: string
-  floor?: string
-  room?: string
-  purchaseDate?: Date
-  purchasePrice?: number
-  warrantyExpiry?: Date
   customFields?: Record<string, any>
   createdById?: string
   tenantId?: string
@@ -31,20 +19,8 @@ export interface CreateAssetInput {
 
 export interface UpdateAssetInput {
   name?: string
-  type?: AssetType
-  category?: string
-  manufacturer?: string
-  model?: string
-  serialNumber?: string
   status?: AssetStatus
-  assignedToId?: string
-  location?: string
-  building?: string
-  floor?: string
-  room?: string
-  purchaseDate?: Date
-  purchasePrice?: number
-  warrantyExpiry?: Date
+  assignedToId?: string | null
   customFields?: Record<string, any>
 }
 
@@ -78,35 +54,91 @@ export interface LinkAssetToTicketInput {
   createdById?: string
 }
 
-function generateAssetNumber(): string {
+async function generateAssetNumber(organizationId?: string | null, maxRetries: number = 10): Promise<string> {
   const year = new Date().getFullYear()
   const prefix = 'AST'
-  return `${prefix}-${year}-0001` // Simplified - in production, query for last number
+  const pattern = `${prefix}-${year}-`
+  
+  // Build where clause to find assets for this year
+  const where: any = {
+    deletedAt: null,
+  }
+  
+  // Optionally filter by organization if provided
+  if (organizationId) {
+    where.organizationId = organizationId
+  }
+  
+  // Get all assets for this year to find the max sequence
+  const assets = await prisma.asset.findMany({
+    where,
+    select: {
+      assetNumber: true,
+    },
+  })
+  
+  // Filter assets that match the pattern and extract sequence numbers
+  const sequenceNumbers = assets
+    .map((asset) => {
+      if (asset.assetNumber.startsWith(pattern)) {
+        const parts = asset.assetNumber.split('-')
+        if (parts.length === 3) {
+          const seq = parseInt(parts[2], 10)
+          if (!isNaN(seq)) {
+            return seq
+          }
+        }
+      }
+      return 0
+    })
+    .filter((seq) => seq > 0)
+  
+  // Find the maximum sequence number
+  const maxSequence = sequenceNumbers.length > 0 ? Math.max(...sequenceNumbers) : 0
+  
+  // Try to generate a unique asset number with retry logic
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const sequence = maxSequence + attempt + 1
+    const sequenceStr = sequence.toString().padStart(4, '0')
+    const assetNumber = `${prefix}-${year}-${sequenceStr}`
+    
+    // Check if this asset number already exists
+    const existing = await prisma.asset.findUnique({
+      where: { assetNumber },
+      select: { id: true },
+    })
+    
+    if (!existing) {
+      return assetNumber
+    }
+  }
+  
+  // If all retries failed, throw an error
+  throw new Error('Failed to generate unique asset number after multiple attempts')
 }
 
 export async function createAsset(input: CreateAssetInput) {
-  const assetNumber = generateAssetNumber()
+  const assetNumber = await generateAssetNumber(input.organizationId)
+
+  // Verify the asset type exists
+  const assetType = await prisma.customAssetType.findUnique({
+    where: { id: input.customAssetTypeId },
+    select: { id: true },
+  })
+
+  if (!assetType) {
+    throw new Error('Asset type not found')
+  }
 
   const asset = await prisma.asset.create({
     data: {
       assetNumber,
       name: input.name,
-      type: input.type,
-      customAssetTypeId: input.customAssetTypeId || null,
-      category: input.category,
-      manufacturer: input.manufacturer,
-      model: input.model,
-      serialNumber: input.serialNumber,
+      type: null, // No longer using baseType, type is optional
+      customAssetTypeId: input.customAssetTypeId,
       status: input.status || AssetStatus.ACTIVE,
       assignedToId: input.assignedToId,
       assignedAt: input.assignedToId ? new Date() : null,
-      location: input.location,
-      building: input.building,
-      floor: input.floor,
-      room: input.room,
-      purchaseDate: input.purchaseDate,
-      purchasePrice: input.purchasePrice,
-      warrantyExpiry: input.warrantyExpiry,
       customFields: input.customFields,
       createdById: input.createdById,
       tenantId: input.tenantId,
@@ -140,6 +172,14 @@ export async function getAssetById(id: string) {
           email: true,
           firstName: true,
           lastName: true,
+        },
+      },
+      customAssetType: {
+        include: {
+          customFields: {
+            where: { isActive: true },
+            orderBy: { order: 'asc' },
+          },
         },
       },
       relationships: {
@@ -245,6 +285,12 @@ export async function listAssets(filters: ListAssetsFilters = {}) {
             email: true,
             firstName: true,
             lastName: true,
+          },
+        },
+        customAssetType: {
+          select: {
+            id: true,
+            name: true,
           },
         },
       },
@@ -444,27 +490,28 @@ export async function importAssetsFromCSV(
       const rowNumber = i + 2 // +2 because CSV has header and 0-indexed
 
       try {
+        // CSV import requires customAssetTypeId - skip rows without it
+        if (!row.customAssetTypeId && !row['Custom Asset Type ID'] && !row.custom_asset_type_id) {
+          throw new Error('Custom Asset Type ID is required. Please ensure your CSV includes a customAssetTypeId column.')
+        }
+
+        const customAssetTypeId = row.customAssetTypeId || row['Custom Asset Type ID'] || row.custom_asset_type_id
+
+        // Build custom fields from CSV columns that aren't standard fields
+        const standardFields = ['name', 'Name', 'customAssetTypeId', 'Custom Asset Type ID', 'custom_asset_type_id', 'status', 'Status', 'assignedToId', 'Assigned To ID', 'assigned_to_id']
+        const customFields: Record<string, any> = {}
+        Object.keys(row).forEach(key => {
+          if (!standardFields.includes(key)) {
+            customFields[key] = row[key]
+          }
+        })
+
         const assetData: CreateAssetInput = {
           name: row.name || row.Name || '',
-          type: (row.type || row.Type || 'HARDWARE') as AssetType,
-          category: row.category || row.Category,
-          manufacturer: row.manufacturer || row.Manufacturer,
-          model: row.model || row.Model,
-          serialNumber: row.serialNumber || row['Serial Number'] || row.serial_number,
+          customAssetTypeId: customAssetTypeId,
           status: (row.status || row.Status || 'ACTIVE') as AssetStatus,
-          location: row.location || row.Location,
-          building: row.building || row.Building,
-          floor: row.floor || row.Floor,
-          room: row.room || row.Room,
-          purchaseDate: row.purchaseDate || row['Purchase Date'] || row.purchase_date
-            ? new Date(row.purchaseDate || row['Purchase Date'] || row.purchase_date)
-            : undefined,
-          purchasePrice: row.purchasePrice || row['Purchase Price'] || row.purchase_price
-            ? parseFloat(row.purchasePrice || row['Purchase Price'] || row.purchase_price)
-            : undefined,
-          warrantyExpiry: row.warrantyExpiry || row['Warranty Expiry'] || row.warranty_expiry
-            ? new Date(row.warrantyExpiry || row['Warranty Expiry'] || row.warranty_expiry)
-            : undefined,
+          assignedToId: row.assignedToId || row['Assigned To ID'] || row.assigned_to_id || undefined,
+          customFields: Object.keys(customFields).length > 0 ? customFields : undefined,
           createdById,
         }
 

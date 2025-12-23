@@ -1,5 +1,14 @@
 import '@testing-library/jest-dom'
 
+// Polyfill for Next.js Request/Response APIs in Jest
+const { TextEncoder, TextDecoder } = require('util')
+if (!global.TextEncoder) {
+  global.TextEncoder = TextEncoder
+}
+if (!global.TextDecoder) {
+  global.TextDecoder = TextDecoder
+}
+
 // Mock Next.js router
 jest.mock('next/navigation', () => ({
   useRouter() {

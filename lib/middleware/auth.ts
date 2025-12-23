@@ -29,7 +29,9 @@ export async function getAuthContext(request: NextRequest): Promise<AuthContext 
       return null
     }
 
-    const roles = user.roles.map((ur) => ur.role.name)
+    const roles = user.roles
+      .map((ur) => ur.role?.name || (ur.customRole ? `CUSTOM:${ur.customRole.name}` : null))
+      .filter((r): r is string => r !== null)
     const isGlobalAdmin = roles.includes('GLOBAL_ADMIN')
 
     return {

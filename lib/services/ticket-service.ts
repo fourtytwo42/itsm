@@ -1,6 +1,7 @@
 import prisma from '@/lib/prisma'
-import { TicketStatus, TicketPriority } from '@prisma/client'
+import { TicketStatus, TicketPriority, TicketHistoryType } from '@prisma/client'
 import { wsServer } from '@/lib/websocket/server'
+import { createTicketHistory } from './ticket-history-service'
 import {
   notifyTicketCreated,
   notifyTicketUpdated,
@@ -397,6 +398,8 @@ export async function getTicketById(id: string) {
           slug: true,
         },
       },
+      escalatedByUser: { select: { id: true, email: true, firstName: true, lastName: true } },
+      escalatedToCustomRole: { select: { id: true, name: true, displayName: true } },
       comments: {
         orderBy: { createdAt: 'asc' },
         include: {

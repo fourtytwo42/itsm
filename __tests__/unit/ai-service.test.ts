@@ -97,7 +97,7 @@ describe('AI Service', () => {
 
       expect(result.reply).toBe('Here are some articles about printers...')
       expect(result.toolCalls).toContain('search_knowledge_base')
-      expect(searchArticles).toHaveBeenCalledWith('printer')
+      expect(searchArticles).toHaveBeenCalledWith('printer', undefined)
     })
 
     it('should handle ticket creation tool call', async () => {
@@ -394,7 +394,7 @@ describe('AI Service', () => {
       })
 
       expect(result.reply).toBe('Response')
-      expect(searchArticles).toHaveBeenCalledWith('')
+      expect(searchArticles).toHaveBeenCalledWith('', undefined)
     })
 
     it('should handle null content in final response', async () => {

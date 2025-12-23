@@ -40,6 +40,7 @@ export async function authenticateUser(credentials: LoginCredentials): Promise<A
       roles: {
         include: {
           role: true,
+          customRole: true,
         },
       },
     },
@@ -64,8 +65,10 @@ export async function authenticateUser(credentials: LoginCredentials): Promise<A
     data: { updatedAt: new Date() },
   })
 
-  // Get user roles
-  const roles = user.roles.map((ur) => ur.role.name)
+  // Get user roles (both system and custom)
+  const roles = user.roles
+    .map((ur) => ur.role?.name || (ur.customRole ? `CUSTOM:${ur.customRole.name}` : null))
+    .filter((r): r is string => r !== null)
 
   // Generate tokens
   const tokenPayload: TokenPayload = {
@@ -136,13 +139,16 @@ export async function registerUser(data: RegisterData): Promise<AuthResult> {
       roles: {
         include: {
           role: true,
+          customRole: true,
         },
       },
     },
   })
 
-  // Get user roles
-  const roles = user.roles.map((ur) => ur.role.name)
+  // Get user roles (both system and custom)
+  const roles = user.roles
+    .map((ur) => ur.role?.name || (ur.customRole ? `CUSTOM:${ur.customRole.name}` : null))
+    .filter((r): r is string => r !== null)
 
   // Generate tokens
   const tokenPayload: TokenPayload = {
@@ -177,6 +183,7 @@ export async function getUserById(userId: string) {
       roles: {
         include: {
           role: true,
+          customRole: true,
         },
       },
       organization: {

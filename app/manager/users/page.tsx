@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { RoleName } from '@prisma/client'
-import { XMarkIcon } from '@heroicons/react/24/outline'
+import { XMarkIcon, ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/24/outline'
 
 interface User {
   id: string
@@ -51,7 +51,10 @@ export default function ManagerUsersPage() {
     search: '',
     role: '',
     isActive: '',
+    tenantId: '',
   })
+  const [sortField, setSortField] = useState<string>('createdAt')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
 
   // Form state for Create/Edit modals
   const [formData, setFormData] = useState({
@@ -71,7 +74,7 @@ export default function ManagerUsersPage() {
     }
     loadUsers()
     loadTenants()
-  }, [filters])
+  }, [filters, sortField, sortOrder])
 
   // Load tenant assignments for all users (for display in table)
   useEffect(() => {
@@ -88,6 +91,9 @@ export default function ManagerUsersPage() {
       if (filters.search) params.append('search', filters.search)
       if (filters.role) params.append('role', filters.role)
       if (filters.isActive !== '') params.append('isActive', filters.isActive)
+      if (filters.tenantId) params.append('tenantId', filters.tenantId)
+      params.append('sort', sortField)
+      params.append('order', sortOrder)
 
       const response = await fetch(`/api/v1/admin/users?${params.toString()}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -290,6 +296,41 @@ export default function ManagerUsersPage() {
     }
   }
 
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortField(field)
+      setSortOrder('desc')
+    }
+  }
+
+  const SortableHeader = ({ field, label, align = 'left' }: { field: string; label: string; align?: 'left' | 'center' | 'right' }) => (
+    <th
+      style={{
+        padding: '0.875rem 1rem',
+        textAlign: align,
+        fontWeight: 600,
+        fontSize: '0.875rem',
+        color: 'var(--text-secondary)',
+        cursor: 'pointer',
+        userSelect: 'none',
+      }}
+      onClick={() => handleSort(field)}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', justifyContent: align === 'right' ? 'flex-end' : align === 'center' ? 'center' : 'flex-start' }}>
+        {label}
+        {sortField === field && (
+          sortOrder === 'asc' ? (
+            <ChevronUpIcon style={{ width: '0.875rem', height: '0.875rem' }} />
+          ) : (
+            <ChevronDownIcon style={{ width: '0.875rem', height: '0.875rem' }} />
+          )
+        )}
+      </div>
+    </th>
+  )
+
   const openEditModal = (user: User) => {
     setSelectedUser(user)
     setFormData({
@@ -431,6 +472,19 @@ export default function ManagerUsersPage() {
             <option value="true">Active</option>
             <option value="false">Inactive</option>
           </select>
+          <select
+            value={filters.tenantId}
+            onChange={(e) => setFilters({ ...filters, tenantId: e.target.value })}
+            className="input"
+            style={{ minWidth: '150px', maxWidth: '200px' }}
+          >
+            <option value="">All Tenants</option>
+            {tenants.map((tenant) => (
+              <option key={tenant.id} value={tenant.id}>
+                {tenant.name}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -448,13 +502,13 @@ export default function ManagerUsersPage() {
                 borderBottom: '2px solid var(--border-color)',
                 backgroundColor: 'var(--bg-secondary)',
               }}>
-                <th style={{ padding: '0.875rem 1rem', textAlign: 'left', fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Email</th>
-                <th style={{ padding: '0.875rem 1rem', textAlign: 'left', fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Name</th>
-                <th style={{ padding: '0.875rem 1rem', textAlign: 'left', fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Role</th>
+                <SortableHeader field="email" label="Email" />
+                <SortableHeader field="firstName" label="Name" />
+                <SortableHeader field="role" label="Role" />
                 <th style={{ padding: '0.875rem 1rem', textAlign: 'left', fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Tenants</th>
-                <th style={{ padding: '0.875rem 1rem', textAlign: 'left', fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Status</th>
-                <th style={{ padding: '0.875rem 1rem', textAlign: 'center', fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Verified</th>
-                <th style={{ padding: '0.875rem 1rem', textAlign: 'left', fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Created</th>
+                <SortableHeader field="isActive" label="Status" />
+                <SortableHeader field="emailVerified" label="Verified" align="center" />
+                <SortableHeader field="createdAt" label="Created" />
                 <th style={{ padding: '0.875rem 1rem', textAlign: 'right', fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Actions</th>
               </tr>
             </thead>

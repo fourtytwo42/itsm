@@ -64,12 +64,7 @@ async function main() {
   })
   console.log('Updated assets:', assetUpdate.count)
 
-  // Step 7: Update all change requests to belong to default organization
-  const changeUpdate = await prisma.changeRequest.updateMany({
-    where: { organizationId: null },
-    data: { organizationId: defaultOrg.id },
-  })
-  console.log('Updated change requests:', changeUpdate.count)
+  // Step 7: (Removed - Change requests no longer exist)
 
   // Step 8: Convert existing ADMIN users to GLOBAL_ADMIN or keep as ADMIN
   // Check if there are any ADMIN users

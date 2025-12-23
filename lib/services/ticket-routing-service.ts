@@ -33,6 +33,7 @@ export async function routeTicketByCategory(input: RouteTicketInput) {
           roles: {
             include: {
               role: true,
+              customRole: true,
             },
           },
         },
@@ -44,7 +45,9 @@ export async function routeTicketByCategory(input: RouteTicketInput) {
   const eligibleUsers = assignments
     .map((a) => a.user)
     .filter((user) => {
-      const roles = user.roles.map((ur) => ur.role.name)
+      const roles = user.roles
+        .map((ur) => ur.role?.name || (ur.customRole ? `CUSTOM:${ur.customRole.name}` : null))
+        .filter((r): r is string => r !== null)
       return roles.includes('AGENT') || roles.includes('IT_MANAGER')
     })
 

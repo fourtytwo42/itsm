@@ -3,7 +3,6 @@ import { AssetType } from '@prisma/client'
 
 export interface CreateCustomAssetTypeInput {
   name: string
-  baseType: AssetType
   organizationId: string
   description?: string
 }
@@ -41,7 +40,6 @@ export async function createCustomAssetType(input: CreateCustomAssetTypeInput) {
   return prisma.customAssetType.create({
     data: {
       name: input.name,
-      baseType: input.baseType,
       organizationId: input.organizationId,
       description: input.description,
     },
@@ -54,13 +52,10 @@ export async function createCustomAssetType(input: CreateCustomAssetTypeInput) {
   })
 }
 
-export async function listCustomAssetTypes(organizationId: string, baseType?: AssetType) {
+export async function listCustomAssetTypes(organizationId: string) {
   const where: any = {
     organizationId,
     isActive: true,
-  }
-  if (baseType) {
-    where.baseType = baseType
   }
 
   return prisma.customAssetType.findMany({

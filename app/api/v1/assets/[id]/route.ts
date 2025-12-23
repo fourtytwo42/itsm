@@ -8,24 +8,12 @@ import {
 import { auditLog } from '@/lib/middleware/audit'
 import { AuditEventType } from '@prisma/client'
 import { z } from 'zod'
-import { AssetType, AssetStatus } from '@prisma/client'
+import { AssetStatus } from '@prisma/client'
 
 const updateAssetSchema = z.object({
   name: z.string().min(1).optional(),
-  type: z.nativeEnum(AssetType).optional(),
-  category: z.string().optional(),
-  manufacturer: z.string().optional(),
-  model: z.string().optional(),
-  serialNumber: z.string().optional(),
   status: z.nativeEnum(AssetStatus).optional(),
   assignedToId: z.string().uuid().optional().nullable(),
-  location: z.string().optional(),
-  building: z.string().optional(),
-  floor: z.string().optional(),
-  room: z.string().optional(),
-  purchaseDate: z.string().datetime().optional(),
-  purchasePrice: z.number().optional(),
-  warrantyExpiry: z.string().datetime().optional(),
   customFields: z.record(z.any()).optional(),
 })
 
@@ -104,9 +92,19 @@ export async function PUT(
 
     const asset = await updateAsset(id, {
       ...validatedData,
-      purchaseDate: validatedData.purchaseDate ? new Date(validatedData.purchaseDate) : undefined,
-      warrantyExpiry: validatedData.warrantyExpiry ? new Date(validatedData.warrantyExpiry) : undefined,
       assignedToId: validatedData.assignedToId === null ? undefined : validatedData.assignedToId,
+    })
+
+    // Build changes object for audit
+    const changes: Record<string, any> = {}
+    Object.keys(validatedData).forEach(key => {
+      if (validatedData[key as keyof typeof validatedData] !== undefined) {
+        const oldValue = (oldAsset as any)?.[key]
+        const newValue = validatedData[key as keyof typeof validatedData]
+        if (oldValue !== newValue) {
+          changes[key] = { old: oldValue, new: newValue }
+        }
+      }
     })
 
     // Log audit event for assignment changes
@@ -118,11 +116,17 @@ export async function PUT(
         authContext.user.id,
         authContext.user.email,
         `Assigned asset ${asset.assetNumber} to ${validatedData.assignedToId || 'unassigned'}`,
-        { assetId: asset.id, assetNumber: asset.assetNumber, oldAssigneeId: oldAsset.assignedToId, newAssigneeId: validatedData.assignedToId },
+        { 
+          assetId: asset.id, 
+          assetNumber: asset.assetNumber, 
+          oldAssigneeId: oldAsset.assignedToId, 
+          newAssigneeId: validatedData.assignedToId,
+          changes 
+        },
         request
       )
-    } else {
-      // Log general update
+    } else if (Object.keys(changes).length > 0) {
+      // Log general update with detailed changes
       await auditLog(
         AuditEventType.ASSET_UPDATED,
         'Asset',
@@ -130,7 +134,11 @@ export async function PUT(
         authContext.user.id,
         authContext.user.email,
         `Updated asset: ${asset.assetNumber}`,
-        { assetId: asset.id, assetNumber: asset.assetNumber, changes: validatedData },
+        { 
+          assetId: asset.id, 
+          assetNumber: asset.assetNumber, 
+          changes 
+        },
         request
       )
     }

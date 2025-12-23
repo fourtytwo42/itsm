@@ -143,3 +143,12 @@ select {
   box-shadow: 0 4px 6px var(--shadow);
 }
 
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+

@@ -1,17 +1,24 @@
-import { authenticateUser, registerUser } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
-import { hashPassword } from '@/lib/auth'
+import { authenticateUser, registerUser, hashPassword } from '@/lib/auth'
 import { RoleName } from '@prisma/client'
 
+const mockUser = {
+  findUnique: jest.fn(),
+  create: jest.fn(),
+  update: jest.fn(),
+}
+
+const mockPrisma = {
+  user: mockUser,
+}
+
 jest.mock('@/lib/prisma', () => ({
-  prisma: {
-    user: {
-      findUnique: jest.fn(),
-      create: jest.fn(),
-      update: jest.fn(),
-    },
+  __esModule: true,
+  get default() {
+    return mockPrisma
   },
 }))
+
+const prisma = mockPrisma as any
 
 describe('Auth Service Functions', () => {
   beforeEach(() => {

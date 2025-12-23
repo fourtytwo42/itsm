@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { TicketStatus, TicketPriority } from '@prisma/client'
 import TicketsTable from '@/components/TicketsTable'
+import { Cog6ToothIcon, XMarkIcon } from '@heroicons/react/24/outline'
 
 interface DashboardMetrics {
   totalTickets: number
@@ -11,7 +12,6 @@ interface DashboardMetrics {
   resolvedTickets: number
   closedTickets: number
   averageResolutionTime: number
-  slaCompliance: number
   ticketsByPriority: Record<string, number>
   ticketsByStatus: Record<string, number>
 }
@@ -56,6 +56,25 @@ interface KBArticle {
   updatedAt: string
 }
 
+interface DashboardSection {
+  id: string
+  label: string
+  roles?: string[] // If specified, only show for these roles
+}
+
+const DASHBOARD_SECTIONS: DashboardSection[] = [
+  { id: 'metrics', label: 'Metrics Cards' },
+  { id: 'ticketsByPriority', label: 'Tickets by Priority' },
+  { id: 'ticketsByStatus', label: 'Tickets by Status' },
+  { id: 'assignedTickets', label: 'My Assigned Tickets', roles: ['AGENT', 'IT_MANAGER'] },
+  { id: 'kbArticles', label: 'Recent Knowledge Base Articles', roles: ['AGENT', 'IT_MANAGER'] },
+  { id: 'quickLinks', label: 'Quick Links' },
+]
+
+interface DashboardSettings {
+  [sectionId: string]: boolean
+}
+
 export default function DashboardPage() {
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null)
   const [mttr, setMttr] = useState<number | null>(null)
@@ -65,13 +84,42 @@ export default function DashboardPage() {
   const [kbArticles, setKbArticles] = useState<KBArticle[]>([])
   const [kbLoading, setKbLoading] = useState(false)
   const [user, setUser] = useState<any>(null)
+  const [ticketSortField, setTicketSortField] = useState<string>('createdAt')
+  const [ticketSortOrder, setTicketSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [showSettings, setShowSettings] = useState(false)
+  const [sectionVisibility, setSectionVisibility] = useState<DashboardSettings>({})
 
+  // Load user and dashboard settings
   useEffect(() => {
     const storedUser = localStorage.getItem('user')
     if (storedUser) {
       try {
         const userData = JSON.parse(storedUser)
         setUser(userData)
+        
+        // Load dashboard settings for this user
+        const settingsKey = `dashboardSettings_${userData.id}`
+        const savedSettings = localStorage.getItem(settingsKey)
+        
+        if (savedSettings) {
+          try {
+            const parsed = JSON.parse(savedSettings)
+            setSectionVisibility(parsed)
+          } catch (e) {
+            console.error('Failed to parse dashboard settings')
+          }
+        } else {
+          // Initialize with all sections visible (based on user role)
+          const defaultSettings: DashboardSettings = {}
+          DASHBOARD_SECTIONS.forEach(section => {
+            // Only include sections the user has permission for
+            if (!section.roles || section.roles.some(role => userData.roles?.includes(role))) {
+              defaultSettings[section.id] = true
+            }
+          })
+          setSectionVisibility(defaultSettings)
+          localStorage.setItem(settingsKey, JSON.stringify(defaultSettings))
+        }
       } catch (e) {
         console.error('Failed to parse user data')
       }
@@ -79,15 +127,6 @@ export default function DashboardPage() {
     loadDashboardData()
   }, [])
 
-  useEffect(() => {
-    if (user) {
-      const isAgent = user.roles?.some((r: string) => ['AGENT', 'IT_MANAGER', 'ADMIN'].includes(r))
-      if (isAgent) {
-        loadAssignedTickets()
-        loadRecentKBArticles()
-      }
-    }
-  }, [user])
 
   const loadDashboardData = async () => {
     try {
@@ -124,12 +163,16 @@ export default function DashboardPage() {
     try {
       setTicketsLoading(true)
       const token = localStorage.getItem('accessToken')
-      const response = await fetch(
-        `/api/v1/tickets?onlyAssignedToMe=true&excludeStatuses=CLOSED,RESOLVED&limit=20`,
-        {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        }
-      )
+      const params = new URLSearchParams()
+      params.append('onlyAssignedToMe', 'true')
+      params.append('excludeStatuses', 'CLOSED,RESOLVED')
+      params.append('limit', '20')
+      params.append('sortBy', ticketSortField)
+      params.append('sortOrder', ticketSortOrder)
+      
+      const response = await fetch(`/api/v1/tickets?${params.toString()}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
 
       const data = await response.json()
       if (data.success) {
@@ -141,6 +184,17 @@ export default function DashboardPage() {
       setTicketsLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (user) {
+      // Only agents and IT managers have assigned tickets, not admins
+      const isAgentOrManager = user.roles?.some((r: string) => ['AGENT', 'IT_MANAGER'].includes(r))
+      if (isAgentOrManager) {
+        loadAssignedTickets()
+        loadRecentKBArticles()
+      }
+    }
+  }, [user, ticketSortField, ticketSortOrder])
 
   const loadRecentKBArticles = async () => {
     try {
@@ -212,7 +266,36 @@ export default function DashboardPage() {
     }
   }
 
-  const isAgent = user?.roles?.some((r: string) => ['AGENT', 'IT_MANAGER', 'ADMIN'].includes(r))
+  const handleSaveSettings = () => {
+    if (user?.id) {
+      const settingsKey = `dashboardSettings_${user.id}`
+      localStorage.setItem(settingsKey, JSON.stringify(sectionVisibility))
+      setShowSettings(false)
+    }
+  }
+
+  const handleToggleSection = (sectionId: string) => {
+    setSectionVisibility(prev => ({
+      ...prev,
+      [sectionId]: !prev[sectionId]
+    }))
+  }
+
+  const isSectionVisible = (sectionId: string): boolean => {
+    return sectionVisibility[sectionId] !== false // Default to true if not set
+  }
+
+  const getAvailableSections = (): DashboardSection[] => {
+    if (!user) return []
+    return DASHBOARD_SECTIONS.filter(section => {
+      // Only show sections the user has permission for
+      if (!section.roles) return true
+      return section.roles.some(role => user.roles?.includes(role))
+    })
+  }
+
+  // Only agents and IT managers have assigned tickets, not admins
+  const isAgentOrManager = user?.roles?.some((r: string) => ['AGENT', 'IT_MANAGER'].includes(r))
 
   if (loading) {
     return <div style={{ padding: '2rem' }}>Loading dashboard...</div>
@@ -222,7 +305,24 @@ export default function DashboardPage() {
     <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <h1 style={{ margin: 0 }}>Dashboard</h1>
-        <div style={{ display: 'flex', gap: '1rem' }}>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          <button
+            onClick={() => setShowSettings(true)}
+            style={{
+              padding: '0.5rem',
+              backgroundColor: 'transparent',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+            title="Dashboard Settings"
+          >
+            <Cog6ToothIcon style={{ width: '20px', height: '20px' }} />
+          </button>
           <button
             onClick={() => handleExport('tickets')}
             style={{
@@ -251,7 +351,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {metrics && (
+      {metrics && isSectionVisible('metrics') && (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
             <div
@@ -296,28 +396,6 @@ export default function DashboardPage() {
               <div style={{ fontSize: '2rem', fontWeight: 'bold', color: 'green' }}>{metrics.resolvedTickets}</div>
             </div>
 
-            <div
-              style={{
-                padding: '1.5rem',
-                border: '1px solid var(--border-color)',
-                borderRadius: '8px',
-                backgroundColor: 'var(--bg-secondary)',
-              }}
-            >
-              <h3 style={{ marginTop: 0, marginBottom: '0.5rem', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                SLA Compliance
-              </h3>
-              <div
-                style={{
-                  fontSize: '2rem',
-                  fontWeight: 'bold',
-                  color: metrics.slaCompliance >= 90 ? 'green' : metrics.slaCompliance >= 75 ? 'orange' : 'red',
-                }}
-              >
-                {metrics.slaCompliance.toFixed(1)}%
-              </div>
-            </div>
-
             {mttr !== null && (
               <div
                 style={{
@@ -349,49 +427,64 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '2rem' }}>
-            <div
-              style={{
-                padding: '1.5rem',
-                border: '1px solid var(--border-color)',
-                borderRadius: '8px',
-                backgroundColor: 'var(--bg-secondary)',
+          {(isSectionVisible('ticketsByPriority') || isSectionVisible('ticketsByStatus')) && (
+            <div 
+              style={{ 
+                display: 'grid', 
+                gridTemplateColumns: isSectionVisible('ticketsByPriority') && isSectionVisible('ticketsByStatus') 
+                  ? '1fr 1fr' 
+                  : '1fr',
+                gap: '2rem', 
+                marginBottom: '2rem' 
               }}
             >
-              <h2 style={{ marginTop: 0, marginBottom: '1rem' }}>Tickets by Priority</h2>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {Object.entries(metrics.ticketsByPriority).map(([priority, count]) => (
-                  <div key={priority} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>{priority}:</span>
-                    <strong>{count}</strong>
+              {isSectionVisible('ticketsByPriority') && (
+                <div
+                  style={{
+                    padding: '1.5rem',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '8px',
+                    backgroundColor: 'var(--bg-secondary)',
+                  }}
+                >
+                  <h2 style={{ marginTop: 0, marginBottom: '1rem' }}>Tickets by Priority</h2>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {Object.entries(metrics.ticketsByPriority).map(([priority, count]) => (
+                      <div key={priority} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>{priority}:</span>
+                        <strong>{count}</strong>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </div>
+                </div>
+              )}
 
-            <div
-              style={{
-                padding: '1.5rem',
-                border: '1px solid var(--border-color)',
-                borderRadius: '8px',
-                backgroundColor: 'var(--bg-secondary)',
-              }}
-            >
-              <h2 style={{ marginTop: 0, marginBottom: '1rem' }}>Tickets by Status</h2>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {Object.entries(metrics.ticketsByStatus).map(([status, count]) => (
-                  <div key={status} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>{status}:</span>
-                    <strong>{count}</strong>
+              {isSectionVisible('ticketsByStatus') && (
+                <div
+                  style={{
+                    padding: '1.5rem',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '8px',
+                    backgroundColor: 'var(--bg-secondary)',
+                  }}
+                >
+                  <h2 style={{ marginTop: 0, marginBottom: '1rem' }}>Tickets by Status</h2>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {Object.entries(metrics.ticketsByStatus).map(([status, count]) => (
+                      <div key={status} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>{status}:</span>
+                        <strong>{count}</strong>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </div>
+              )}
             </div>
-          </div>
+          )}
         </>
       )}
 
-      {isAgent && (
+      {isAgentOrManager && isSectionVisible('assignedTickets') && (
         <>
           <div style={{ marginBottom: '2rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -408,13 +501,21 @@ export default function DashboardPage() {
                 onStatusChange={handleStatusChange}
                 showQuickActions={true}
                 onRefresh={loadAssignedTickets}
+                disableClientSort={true}
+                onSortChange={(field, order) => {
+                  setTicketSortField(field)
+                  setTicketSortOrder(order)
+                }}
+                currentSortField={ticketSortField}
+                currentSortOrder={ticketSortOrder}
               />
             )}
           </div>
 
-          <div style={{ marginBottom: '2rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h2 style={{ margin: 0 }}>Recent Knowledge Base Articles</h2>
+          {isSectionVisible('kbArticles') && (
+            <div style={{ marginBottom: '2rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <h2 style={{ margin: 0 }}>Recent Knowledge Base Articles</h2>
               <Link href="/kb" className="btn btn-secondary" style={{ fontSize: '0.875rem' }}>
                 View All Articles
               </Link>
@@ -449,11 +550,13 @@ export default function DashboardPage() {
                 No knowledge base articles found.
               </div>
             )}
-          </div>
+            </div>
+          )}
         </>
       )}
 
-      <div style={{ marginTop: '2rem' }}>
+      {isSectionVisible('quickLinks') && (
+        <div style={{ marginTop: '2rem' }}>
         <h2 style={{ marginBottom: '1rem' }}>Quick Links</h2>
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
           <Link
@@ -483,19 +586,6 @@ export default function DashboardPage() {
             View Assets
           </Link>
           <Link
-            href="/changes"
-            style={{
-              padding: '0.75rem 1.5rem',
-              backgroundColor: 'var(--bg-secondary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '6px',
-              textDecoration: 'none',
-              color: 'var(--text-primary)',
-            }}
-          >
-            View Changes
-          </Link>
-          <Link
             href="/kb"
             style={{
               padding: '0.75rem 1.5rem',
@@ -510,6 +600,121 @@ export default function DashboardPage() {
           </Link>
         </div>
       </div>
+      )}
+
+      {/* Settings Dialog */}
+      {showSettings && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+          onClick={() => setShowSettings(false)}
+        >
+          <div
+            style={{
+              backgroundColor: 'var(--bg-primary)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '8px',
+              padding: '2rem',
+              maxWidth: '500px',
+              width: '90%',
+              maxHeight: '80vh',
+              overflow: 'auto',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h2 style={{ margin: 0 }}>Dashboard Settings</h2>
+              <button
+                onClick={() => setShowSettings(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: 'var(--text-primary)',
+                  padding: '0.25rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <XMarkIcon style={{ width: '24px', height: '24px' }} />
+              </button>
+            </div>
+            
+            <p style={{ marginBottom: '1.5rem', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+              Select which sections to display on your dashboard:
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.5rem' }}>
+              {getAvailableSections().map((section) => (
+                <label
+                  key={section.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                    padding: '0.75rem',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isSectionVisible(section.id)}
+                    onChange={() => handleToggleSection(section.id)}
+                    style={{
+                      width: '18px',
+                      height: '18px',
+                      cursor: 'pointer',
+                    }}
+                  />
+                  <span>{section.label}</span>
+                </label>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowSettings(false)}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: 'var(--bg-secondary)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveSettings}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: 'var(--accent-primary)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                }}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

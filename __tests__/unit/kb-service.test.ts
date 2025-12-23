@@ -6,19 +6,27 @@ import {
   searchArticles,
   updateArticle,
 } from '@/lib/services/kb-service'
-import { prisma } from '@/lib/prisma'
 import { ArticleStatus } from '@prisma/client'
 
+const mockKnowledgeBaseArticle = {
+  create: jest.fn(),
+  update: jest.fn(),
+  findUnique: jest.fn(),
+  findMany: jest.fn(),
+}
+
+const mockPrisma = {
+  knowledgeBaseArticle: mockKnowledgeBaseArticle,
+}
+
 jest.mock('@/lib/prisma', () => ({
-  prisma: {
-    knowledgeBaseArticle: {
-      create: jest.fn(),
-      update: jest.fn(),
-      findUnique: jest.fn(),
-      findMany: jest.fn(),
-    },
+  __esModule: true,
+  get default() {
+    return mockPrisma
   },
 }))
+
+const prisma = mockPrisma as any
 
 describe('KB Service', () => {
   beforeEach(() => {

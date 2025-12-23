@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     }
 
     const searchParams = request.nextUrl.searchParams
-    const type = (searchParams.get('type') || 'tickets') as 'tickets' | 'agents' | 'sla'
+    const type = (searchParams.get('type') || 'tickets') as 'tickets' | 'agents'
     const format = searchParams.get('format') || 'csv'
     const startDate = searchParams.get('startDate')
       ? new Date(searchParams.get('startDate')!)

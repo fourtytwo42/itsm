@@ -7,6 +7,7 @@ import {
   canManageAgentInOrganization,
 } from '@/lib/services/user-service'
 import { z } from 'zod'
+import { RoleName } from '@prisma/client'
 
 const updateAgentSchema = z.object({
   email: z.string().email().optional(),
@@ -14,6 +15,7 @@ const updateAgentSchema = z.object({
   firstName: z.string().optional(),
   lastName: z.string().optional(),
   isActive: z.boolean().optional(),
+  roles: z.array(z.nativeEnum(RoleName)).optional(),
 })
 
 export async function GET(

@@ -270,9 +270,29 @@ async function main() {
     })
   }
 
+  // Assign IT Manager to tenant (all categories)
+  const existingManagerAssignment = await prisma.tenantAssignment.findFirst({
+    where: {
+      tenantId: demoTenant.id,
+      userId: manager.id,
+      category: null,
+    },
+  })
+
+  if (!existingManagerAssignment) {
+    await prisma.tenantAssignment.create({
+      data: {
+        tenantId: demoTenant.id,
+        userId: manager.id,
+        category: null, // All categories
+      },
+    })
+  }
+
   console.log('Tenant assignments created:')
   console.log('- Agent assigned to tenant')
   console.log('- End User assigned to tenant')
+  console.log('- IT Manager assigned to tenant')
 
   // Create sample tickets (associated with demo tenant)
   const ticket1 = await prisma.ticket.upsert({

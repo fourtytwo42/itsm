@@ -35,6 +35,7 @@ export interface UserFilters {
   organizationId?: string // Filter by organization
   userId?: string // For filtering by user's organization
   userRoles?: string[] // User's roles
+  userIds?: string[] // Filter by specific user IDs
   page?: number
   limit?: number
   sort?: string
@@ -108,6 +109,11 @@ export async function getUsers(filters: UserFilters = {}) {
         },
       },
     }
+  }
+
+  // Filter by specific user IDs (for IT Manager tenant filtering)
+  if (filters.userIds && filters.userIds.length > 0) {
+    where.id = { in: filters.userIds }
   }
 
   const [users, total] = await Promise.all([

@@ -18,7 +18,10 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Forbidden: Admin access required' }, { status: 403 })
     }
 
-    const types = await getTicketTypes()
+    const { searchParams } = new URL(req.url)
+    const includeInactive = searchParams.get('includeInactive') === 'true'
+
+    const types = await getTicketTypes(includeInactive)
 
     return NextResponse.json({
       success: true,

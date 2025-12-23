@@ -11,9 +11,7 @@ const updateUserSchema = z.object({
   password: z.string().min(8).optional(),
   firstName: z.string().optional(),
   lastName: z.string().optional(),
-  roles: z.array(z.nativeEnum(RoleName)).optional(),
-  isActive: z.boolean().optional(),
-  emailVerified: z.boolean().optional(),
+  roles: z.array(z.nativeEnum(RoleName)).optional(), // Still accept array for backward compatibility, but will be single role
 })
 
 export async function GET(
@@ -79,7 +77,18 @@ export async function PUT(
     // Get old user data for audit
     const oldUser = await getUserById(id)
 
-    const user = await updateUser(id, validatedData)
+    // Ensure roles array has only one role if provided
+    const updateData: any = { ...validatedData }
+    if (updateData.roles && Array.isArray(updateData.roles)) {
+      // If roles array is provided, ensure it only has one role
+      if (updateData.roles.length > 0) {
+        updateData.roles = [updateData.roles[0]] // Take only the first role
+      } else {
+        delete updateData.roles // Remove if empty
+      }
+    }
+
+    const user = await updateUser(id, updateData)
 
     // Log audit event
     await auditLog(
@@ -93,7 +102,7 @@ export async function PUT(
         userId: user.id,
         email: user.email,
         changes: validatedData,
-        oldValues: oldUser ? { isActive: oldUser.isActive, roles: oldUser.roles.map((r: any) => r.role.name) } : null,
+        oldValues: oldUser ? { roles: oldUser.roles?.map((r: any) => r.role.name) || [] } : null,
       },
       request
     )

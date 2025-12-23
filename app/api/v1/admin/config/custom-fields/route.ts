@@ -20,8 +20,9 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url)
     const entityType = searchParams.get('entityType') || 'ticket'
+    const includeInactive = searchParams.get('includeInactive') === 'true'
 
-    const fields = await getCustomFields(entityType)
+    const fields = await getCustomFields(entityType, includeInactive)
 
     return NextResponse.json({
       success: true,

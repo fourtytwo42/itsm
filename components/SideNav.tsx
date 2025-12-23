@@ -152,6 +152,7 @@ export default function SideNav() {
 
   const managerItems: NavItem[] = [
     { href: '/manager/tenants', label: 'My Tenants', icon: UsersIcon, iconSolid: UsersIconSolid },
+    { href: '/manager/users', label: 'Users', icon: UsersIcon, iconSolid: UsersIconSolid, roles: ['IT_MANAGER'] },
     { href: '/manager/agents', label: 'My Agents', icon: UsersIcon, iconSolid: UsersIconSolid },
   ]
 
@@ -169,6 +170,10 @@ export default function SideNav() {
     { href: '/organization/audit', label: 'Audit Logs', icon: ClockIcon, iconSolid: ClockIconSolid },
   ]
 
+  const agentItems: NavItem[] = [
+    { href: '/agent/users', label: 'Users', icon: UsersIcon, iconSolid: UsersIconSolid },
+  ]
+
   const canAccess = (item: NavItem) => {
     if (!item.roles) return true
     if (!user?.roles) return false
@@ -179,6 +184,7 @@ export default function SideNav() {
   const filteredGlobalAdminItems = globalAdminItems.filter(canAccess)
   const filteredManagerItems = managerItems.filter(() => isManager)
   const filteredAdminItems = adminItems.filter(canAccess)
+  const filteredAgentItems = agentItems.filter(() => isAgent)
 
   const isActive = (href: string) => {
     if (href === '/dashboard') {
@@ -433,6 +439,18 @@ export default function SideNav() {
               }}
             />
             {filteredAdminItems.map(renderNavItem)}
+          </>
+        )}
+        {isAgent && filteredAgentItems.length > 0 && (
+          <>
+            <div
+              style={{
+                padding: '0.5rem 0',
+                marginTop: '0.5rem',
+                borderTop: '1px solid var(--border-color)',
+              }}
+            />
+            {filteredAgentItems.map(renderNavItem)}
           </>
         )}
       </div>

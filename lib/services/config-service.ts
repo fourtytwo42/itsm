@@ -167,7 +167,7 @@ export async function deleteSetting(key: string): Promise<void> {
 }
 
 // Custom Fields
-export async function getCustomFields(entityType: string): Promise<Array<{
+export async function getCustomFields(entityType: string, includeInactive: boolean = false): Promise<Array<{
   id: string
   name: string
   label: string
@@ -176,11 +176,12 @@ export async function getCustomFields(entityType: string): Promise<Array<{
   defaultValue: string | null
   options: any
   order: number
+  active: boolean
 }>> {
   const fields = await prisma.customField.findMany({
     where: {
       entityType,
-      active: true,
+      ...(includeInactive ? {} : { active: true }),
     },
     orderBy: { order: 'asc' },
   })
@@ -194,6 +195,7 @@ export async function getCustomFields(entityType: string): Promise<Array<{
     defaultValue: f.defaultValue,
     options: f.options,
     order: f.order,
+    active: f.active,
   }))
 }
 
@@ -243,15 +245,16 @@ export async function deleteCustomField(id: string): Promise<void> {
 }
 
 // Ticket Types
-export async function getTicketTypes(): Promise<Array<{
+export async function getTicketTypes(includeInactive: boolean = false): Promise<Array<{
   id: string
   name: string
   description: string | null
   icon: string | null
   color: string | null
+  active: boolean
 }>> {
   const types = await prisma.ticketType.findMany({
-    where: { active: true },
+    where: includeInactive ? {} : { active: true },
     orderBy: { name: 'asc' },
   })
 
@@ -261,6 +264,7 @@ export async function getTicketTypes(): Promise<Array<{
     description: t.description,
     icon: t.icon,
     color: t.color,
+    active: t.active,
   }))
 }
 

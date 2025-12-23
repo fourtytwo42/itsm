@@ -19,12 +19,27 @@ const listSchema = z.object({
   requesterId: z.string().uuid().optional(),
   tenantId: z.string().uuid().optional(),
   category: z.string().optional(),
+  search: z.string().optional(),
+  excludeStatuses: z.array(z.nativeEnum(TicketStatus)).optional(),
+  onlyAssignedToMe: z.boolean().optional(),
+  excludeAssignedToOthers: z.boolean().optional(),
+  page: z.number().int().positive().optional(),
+  limit: z.number().int().positive().max(100).optional(),
+  sortBy: z.string().optional(),
+  sortOrder: z.enum(['asc', 'desc']).optional(),
 })
 
 export async function GET(request: NextRequest) {
   try {
     const auth = await getAuthContext(request)
     const { searchParams } = new URL(request.url)
+    
+    // Parse excludeStatuses if provided (comma-separated)
+    const excludeStatusesParam = searchParams.get('excludeStatuses')
+    const excludeStatuses = excludeStatusesParam
+      ? excludeStatusesParam.split(',').map(s => s.trim() as TicketStatus).filter(Boolean)
+      : undefined
+
     const parsed = listSchema.safeParse({
       status: searchParams.get('status') ?? undefined,
       priority: searchParams.get('priority') ?? undefined,
@@ -32,6 +47,14 @@ export async function GET(request: NextRequest) {
       requesterId: searchParams.get('requesterId') ?? undefined,
       tenantId: searchParams.get('tenantId') ?? undefined,
       category: searchParams.get('category') ?? undefined,
+      search: searchParams.get('search') ?? undefined,
+      excludeStatuses,
+      onlyAssignedToMe: searchParams.get('onlyAssignedToMe') === 'true',
+      excludeAssignedToOthers: searchParams.get('excludeAssignedToOthers') === 'true',
+      page: searchParams.get('page') ? parseInt(searchParams.get('page')!) : undefined,
+      limit: searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : undefined,
+      sortBy: searchParams.get('sortBy') ?? undefined,
+      sortOrder: (searchParams.get('sortOrder') ?? 'desc') as 'asc' | 'desc',
     })
 
     if (!parsed.success) {
@@ -42,13 +65,14 @@ export async function GET(request: NextRequest) {
     }
 
     // Pass user info for category filtering
-    const tickets = await listTickets({
+    const result = await listTickets({
       ...parsed.data,
       userId: auth?.user?.id,
       userRoles: auth?.user?.roles,
     })
-    return NextResponse.json({ success: true, data: tickets })
+    return NextResponse.json({ success: true, data: result.tickets, pagination: result.pagination })
   } catch (error) {
+    console.error('Error fetching tickets:', error)
     return NextResponse.json(
       { success: false, error: { code: 'INTERNAL_ERROR', message: 'Unable to fetch tickets' } },
       { status: 500 }

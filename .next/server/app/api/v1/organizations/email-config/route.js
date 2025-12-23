@@ -1,0 +1,10 @@
+var R=require("../../../../../chunks/[turbopack]_runtime.js")("server/app/api/v1/organizations/email-config/route.js")
+R.c("server/chunks/[root-of-the-server]__b5f4ce0f._.js")
+R.c("server/chunks/[root-of-the-server]__d1fd6f74._.js")
+R.c("server/chunks/_957237aa._.js")
+R.c("server/chunks/[root-of-the-server]__b2da729a._.js")
+R.c("server/chunks/[root-of-the-server]__2f6b7ffc._.js")
+R.c("server/chunks/node_modules_zod_lib_index_mjs_db18e9a4._.js")
+R.c("server/chunks/ce889_server_app_api_v1_organizations_email-config_route_actions_0674e9b1.js")
+R.m(41958)
+module.exports=R.m(41958).exports

@@ -148,15 +148,80 @@ export async function listTickets(params?: {
   category?: string
   userId?: string // For filtering by user's assigned categories
   userRoles?: string[] // User's roles
+  search?: string // Search by username, email, or problem text
+  excludeStatuses?: TicketStatus[] // Exclude certain statuses (e.g., CLOSED, RESOLVED for dashboard)
+  onlyAssignedToMe?: boolean // Only show tickets assigned to current user
+  excludeAssignedToOthers?: boolean // Exclude tickets assigned to other users
+  page?: number
+  limit?: number
+  sortBy?: string // Field to sort by
+  sortOrder?: 'asc' | 'desc'
 }) {
-  const where: any = {
-    status: params?.status,
-    priority: params?.priority,
-    assigneeId: params?.assigneeId,
-    requesterId: params?.requesterId,
-    publicTokenId: params?.publicTokenId,
-    tenantId: params?.tenantId,
-    category: params?.category,
+  const page = params?.page || 1
+  const limit = params?.limit || 50
+  const skip = (page - 1) * limit
+  const sortBy = params?.sortBy || 'createdAt'
+  const sortOrder = params?.sortOrder || 'desc'
+
+  const where: any = {}
+
+  // Status filters
+  if (params?.status) {
+    where.status = params.status
+  }
+  if (params?.excludeStatuses && params.excludeStatuses.length > 0) {
+    where.status = { notIn: params.excludeStatuses }
+  }
+
+  // Assignment filters
+  if (params?.assigneeId) {
+    where.assigneeId = params.assigneeId
+  }
+  if (params?.onlyAssignedToMe && params?.userId) {
+    where.assigneeId = params.userId
+  }
+  if (params?.excludeAssignedToOthers && params?.userId) {
+    where.OR = [
+      { assigneeId: params.userId },
+      { assigneeId: null },
+    ]
+  }
+
+  // Other filters
+  if (params?.priority) {
+    where.priority = params.priority
+  }
+  if (params?.requesterId) {
+    where.requesterId = params.requesterId
+  }
+  if (params?.publicTokenId) {
+    where.publicTokenId = params.publicTokenId
+  }
+  if (params?.tenantId) {
+    where.tenantId = params.tenantId
+  }
+  if (params?.category) {
+    where.category = params.category
+  }
+
+  // Search filter (username, email, or problem text)
+  if (params?.search) {
+    const searchTerm = params.search.trim()
+    where.OR = [
+      { subject: { contains: searchTerm, mode: 'insensitive' } },
+      { description: { contains: searchTerm, mode: 'insensitive' } },
+      { requesterEmail: { contains: searchTerm, mode: 'insensitive' } },
+      { requesterName: { contains: searchTerm, mode: 'insensitive' } },
+      {
+        requester: {
+          OR: [
+            { email: { contains: searchTerm, mode: 'insensitive' } },
+            { firstName: { contains: searchTerm, mode: 'insensitive' } },
+            { lastName: { contains: searchTerm, mode: 'insensitive' } },
+          ],
+        },
+      },
+    ]
   }
 
   // Filter by organization - if user is not GLOBAL_ADMIN, filter by their organization
@@ -170,8 +235,16 @@ export async function listTickets(params?: {
       if (user?.organizationId) {
         where.organizationId = user.organizationId
       } else {
-        // User has no organization, return empty
-        return []
+        // User has no organization, return empty with pagination
+        return {
+          tickets: [],
+          pagination: {
+            page,
+            limit,
+            total: 0,
+            totalPages: 0,
+          },
+        }
       }
     }
   }
@@ -201,15 +274,68 @@ export async function listTickets(params?: {
         })
 
         if (categoryConditions.length > 0) {
-          where.OR = categoryConditions
+          // Merge with existing OR conditions from search if they exist
+          if (where.OR && Array.isArray(where.OR)) {
+            // If we have search OR conditions, we need to wrap them properly
+            // This will be handled later in the function
+            // For now, store category conditions separately
+            const existingOR = where.OR
+            delete where.OR
+            where.AND = [
+              { OR: existingOR },
+              { OR: categoryConditions },
+            ]
+          } else if (!where.OR) {
+            where.OR = categoryConditions
+          }
         } else {
-          // User has no category assignments, return empty
-          return []
+          // User has no category assignments, return empty with pagination
+          return {
+            tickets: [],
+            pagination: {
+              page,
+              limit,
+              total: 0,
+              totalPages: 0,
+            },
+          }
         }
       } else {
-        // User has no assignments, return empty
-        return []
+        // User has no assignments, return empty with pagination
+        return {
+          tickets: [],
+          pagination: {
+            page,
+            limit,
+            total: 0,
+            totalPages: 0,
+          },
+        }
       }
+    }
+  }
+
+  // Handle complex where clauses - ensure proper AND/OR nesting
+  // If we have excludeAssignedToOthers, merge it properly with existing conditions
+  if (params?.excludeAssignedToOthers && params?.userId) {
+    const assigneeCondition = {
+      OR: [
+        { assigneeId: params.userId },
+        { assigneeId: null },
+      ],
+    }
+    if (where.AND) {
+      where.AND.push(assigneeCondition)
+    } else if (where.OR && Array.isArray(where.OR)) {
+      // If we have OR conditions, wrap them with AND
+      const existingOR = where.OR
+      delete where.OR
+      where.AND = [
+        { OR: existingOR },
+        assigneeCondition,
+      ]
+    } else {
+      where.AND = [assigneeCondition]
     }
   }
 
@@ -220,21 +346,42 @@ export async function listTickets(params?: {
     }
   })
 
-  return prisma.ticket.findMany({
-    where,
-    orderBy: { createdAt: 'desc' },
-    include: {
-      requester: { select: { id: true, email: true, firstName: true, lastName: true } },
-      assignee: { select: { id: true, email: true, firstName: true, lastName: true } },
-      tenant: {
-        select: {
-          id: true,
-          name: true,
-          slug: true,
+  // Build orderBy clause
+  const orderBy: any = {}
+  const validSortFields = ['createdAt', 'updatedAt', 'ticketNumber', 'subject', 'status', 'priority']
+  const sortField = validSortFields.includes(sortBy) ? sortBy : 'createdAt'
+  orderBy[sortField] = sortOrder
+
+  const [tickets, total] = await Promise.all([
+    prisma.ticket.findMany({
+      where,
+      orderBy,
+      skip,
+      take: limit,
+      include: {
+        requester: { select: { id: true, email: true, firstName: true, lastName: true } },
+        assignee: { select: { id: true, email: true, firstName: true, lastName: true } },
+        tenant: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+          },
         },
       },
+    }),
+    prisma.ticket.count({ where }),
+  ])
+
+  return {
+    tickets,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
     },
-  })
+  }
 }
 
 export async function getTicketById(id: string) {

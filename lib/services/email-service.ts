@@ -9,13 +9,61 @@ export type EmailConfigInput = {
   host: string
   port: number
   username: string
-  password: string
+  password?: string // Optional for updates (can be empty to keep existing password)
   encryption?: EmailEncryption
   pollingIntervalMinutes?: number
+  organizationId?: string
 }
 
 export async function upsertEmailConfig(input: EmailConfigInput): Promise<EmailConfiguration> {
+  // If organizationId is provided, create organization-scoped config
+  if (input.organizationId) {
+    // Check if config exists
+    const existing = await prisma.emailConfiguration.findUnique({
+      where: { organizationId: input.organizationId },
+    })
+
+    const updateData: any = {
+      providerName: input.providerName,
+      protocol: input.protocol,
+      host: input.host,
+      port: input.port,
+      username: input.username,
+      encryption: input.encryption ?? EmailEncryption.SSL,
+      pollingIntervalMinutes: input.pollingIntervalMinutes ?? 5,
+    }
+
+    // Only update password if provided (to allow updates without changing password)
+    if (input.password && input.password.trim() !== '') {
+      updateData.password = input.password
+    } else if (!existing) {
+      // If creating new config, password is required
+      throw new Error('Password is required when creating new email configuration')
+    }
+
+    return prisma.emailConfiguration.upsert({
+      where: { organizationId: input.organizationId },
+      update: updateData,
+      create: {
+        providerName: input.providerName,
+        protocol: input.protocol,
+        host: input.host,
+        port: input.port,
+        username: input.username,
+        password: input.password || '', // Will throw error before reaching here if password is missing
+        encryption: input.encryption ?? EmailEncryption.SSL,
+        pollingIntervalMinutes: input.pollingIntervalMinutes ?? 5,
+        organizationId: input.organizationId,
+      },
+    })
+  }
+
+  // Legacy global config (for backward compatibility)
   const id = 'default-email-config'
+  if (!input.password) {
+    throw new Error('Password is required')
+  }
+  
   return prisma.emailConfiguration.upsert({
     where: { id },
     update: {
@@ -42,7 +90,13 @@ export async function upsertEmailConfig(input: EmailConfigInput): Promise<EmailC
   })
 }
 
-export async function getEmailConfig(): Promise<EmailConfiguration | null> {
+export async function getEmailConfig(organizationId?: string): Promise<EmailConfiguration | null> {
+  if (organizationId) {
+    return prisma.emailConfiguration.findUnique({
+      where: { organizationId },
+    })
+  }
+  // Legacy: return first config found (global or any org)
   return prisma.emailConfiguration.findFirst()
 }
 

@@ -138,8 +138,9 @@ export default function TopHeader() {
         )}
       </Link>
 
-      {/* Center - Navigation for end users or tenant pages */}
-      {(isTenantPage || (isLoggedIn && user?.roles?.includes('END_USER'))) && (
+      {/* Center - Navigation only for end users (they don't have sidebar) */}
+      {((isTenantPage && (!isLoggedIn || (isLoggedIn && user?.roles?.includes('END_USER')))) || 
+        (!isTenantPage && isLoggedIn && user?.roles?.includes('END_USER'))) && (
         <nav style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
           {isTenantPage ? (
             <>

@@ -92,11 +92,33 @@ export default function TenantsPage() {
   const copyToClipboard = async (slug: string) => {
     const url = getTenantUrl(slug)
     try {
-      await navigator.clipboard.writeText(url)
+      // Try modern clipboard API first
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(url)
+      } else {
+        // Fallback for older browsers
+        const textArea = document.createElement('textarea')
+        textArea.value = url
+        textArea.style.position = 'fixed'
+        textArea.style.left = '-999999px'
+        textArea.style.top = '-999999px'
+        document.body.appendChild(textArea)
+        textArea.focus()
+        textArea.select()
+        try {
+          document.execCommand('copy')
+        } catch (err) {
+          console.error('Fallback copy failed:', err)
+        }
+        document.body.removeChild(textArea)
+      }
       setCopiedSlug(slug)
       setTimeout(() => setCopiedSlug(null), 2000)
     } catch (err) {
       console.error('Failed to copy:', err)
+      // Show error to user
+      setError('Failed to copy URL to clipboard')
+      setTimeout(() => setError(''), 3000)
     }
   }
 

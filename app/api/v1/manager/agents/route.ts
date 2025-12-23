@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthContext, requireAuth } from '@/lib/middleware/auth'
 import { createUser, getUsers } from '@/lib/services/user-service'
+import prisma from '@/lib/prisma'
 import { z } from 'zod'
 import { RoleName } from '@prisma/client'
 
@@ -29,16 +30,26 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get agents in the same organization
-    const result = await getUsers({
-      role: RoleName.AGENT,
+    const searchParams = request.nextUrl.searchParams
+    const filters = {
+      search: searchParams.get('search') || undefined,
+      role: searchParams.get('role') as RoleName | undefined,
+      isActive: searchParams.get('isActive') === 'true' ? true : searchParams.get('isActive') === 'false' ? false : undefined,
+      emailVerified: searchParams.get('emailVerified') === 'true' ? true : searchParams.get('emailVerified') === 'false' ? false : undefined,
       userId: authContext.user.id,
       userRoles: authContext.user.roles,
-    })
-    
+      page: parseInt(searchParams.get('page') || '1'),
+      limit: parseInt(searchParams.get('limit') || '20'),
+      sort: searchParams.get('sort') || 'createdAt',
+      order: (searchParams.get('order') || 'desc') as 'asc' | 'desc',
+    }
+
+    // IT Manager and Admin can see all users in their organization
+    const result = await getUsers(filters)
+
     return NextResponse.json({
       success: true,
-      data: { agents: result.users },
+      data: result,
     })
   } catch (error) {
     return NextResponse.json(

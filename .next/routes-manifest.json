@@ -118,6 +118,14 @@
       "namedRegex": "^/api/v1/admin/users/(?<nxtPid>[^/]+?)/activate(?:/)?$"
     },
     {
+      "page": "/api/v1/admin/users/[id]/tenants",
+      "regex": "^/api/v1/admin/users/([^/]+?)/tenants(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/api/v1/admin/users/(?<nxtPid>[^/]+?)/tenants(?:/)?$"
+    },
+    {
       "page": "/api/v1/assets/[id]",
       "regex": "^/api/v1/assets/([^/]+?)(?:/)?$",
       "routeKeys": {
@@ -196,6 +204,14 @@
         "nxtPid": "nxtPid"
       },
       "namedRegex": "^/api/v1/manager/tenants/(?<nxtPid>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/api/v1/manager/users/[id]/tenants",
+      "regex": "^/api/v1/manager/users/([^/]+?)/tenants(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/api/v1/manager/users/(?<nxtPid>[^/]+?)/tenants(?:/)?$"
     },
     {
       "page": "/api/v1/notifications/[id]",
@@ -424,6 +440,12 @@
       "namedRegex": "^/admin/users(?:/)?$"
     },
     {
+      "page": "/agent/users",
+      "regex": "^/agent/users(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/agent/users(?:/)?$"
+    },
+    {
       "page": "/api/v1/admin/asset-types",
       "regex": "^/api/v1/admin/asset\\-types(?:/)?$",
       "routeKeys": {},
@@ -598,6 +620,12 @@
       "namedRegex": "^/api/v1/organizations/audit/config(?:/)?$"
     },
     {
+      "page": "/api/v1/organizations/email-config",
+      "regex": "^/api/v1/organizations/email\\-config(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/v1/organizations/email\\-config(?:/)?$"
+    },
+    {
       "page": "/api/v1/organizations/me",
       "regex": "^/api/v1/organizations/me(?:/)?$",
       "routeKeys": {},
@@ -716,6 +744,12 @@
       "regex": "^/manager/tenants/new(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/manager/tenants/new(?:/)?$"
+    },
+    {
+      "page": "/manager/users",
+      "regex": "^/manager/users(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/manager/users(?:/)?$"
     },
     {
       "page": "/organization/audit",

@@ -41,6 +41,20 @@ export default function RegisterPage() {
 
     try {
       const publicToken = localStorage.getItem('publicToken')
+      
+      // Extract tenant slug from redirect URL if present
+      const urlParams = new URLSearchParams(window.location.search)
+      const redirect = urlParams.get('redirect') || '/dashboard'
+      let tenantSlug: string | undefined
+      
+      // Check if redirect is a tenant page
+      if (redirect.startsWith('/tenant/')) {
+        const match = redirect.match(/^\/tenant\/([^/]+)/)
+        if (match) {
+          tenantSlug = match[1]
+        }
+      }
+      
       const response = await fetch('/api/v1/auth/register', {
         method: 'POST',
         headers: {
@@ -52,6 +66,7 @@ export default function RegisterPage() {
           password: formData.password,
           firstName: formData.firstName || undefined,
           lastName: formData.lastName || undefined,
+          tenantSlug, // Pass tenant slug for auto-assignment
         }),
       })
 
@@ -71,10 +86,6 @@ export default function RegisterPage() {
       // Clear public token after successful registration (tickets are now merged)
       localStorage.removeItem('publicToken')
       localStorage.removeItem('publicTokenId')
-
-      // Check for redirect parameter
-      const urlParams = new URLSearchParams(window.location.search)
-      const redirect = urlParams.get('redirect') || '/dashboard'
 
       // Redirect to the specified page or dashboard
       window.location.href = redirect

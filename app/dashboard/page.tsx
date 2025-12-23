@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import OrganizationContext from '@/components/OrganizationContext'
+import { TicketStatus, TicketPriority } from '@prisma/client'
+import TicketsTable from '@/components/TicketsTable'
 
 interface DashboardMetrics {
   totalTickets: number
@@ -15,14 +16,78 @@ interface DashboardMetrics {
   ticketsByStatus: Record<string, number>
 }
 
+interface Ticket {
+  id: string
+  ticketNumber: string
+  subject: string
+  description: string
+  status: TicketStatus
+  priority: TicketPriority
+  createdAt: string
+  updatedAt: string
+  requester?: {
+    id: string
+    email: string
+    firstName: string | null
+    lastName: string | null
+  } | null
+  requesterEmail?: string | null
+  requesterName?: string | null
+  assignee?: {
+    id: string
+    email: string
+    firstName: string | null
+    lastName: string | null
+  } | null
+  tenant?: {
+    id: string
+    name: string
+    slug: string
+  } | null
+}
+
+interface KBArticle {
+  id: string
+  slug: string
+  title: string
+  content: string
+  status: string
+  createdAt: string
+  updatedAt: string
+}
+
 export default function DashboardPage() {
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null)
   const [mttr, setMttr] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
+  const [tickets, setTickets] = useState<Ticket[]>([])
+  const [ticketsLoading, setTicketsLoading] = useState(false)
+  const [kbArticles, setKbArticles] = useState<KBArticle[]>([])
+  const [kbLoading, setKbLoading] = useState(false)
+  const [user, setUser] = useState<any>(null)
 
   useEffect(() => {
+    const storedUser = localStorage.getItem('user')
+    if (storedUser) {
+      try {
+        const userData = JSON.parse(storedUser)
+        setUser(userData)
+      } catch (e) {
+        console.error('Failed to parse user data')
+      }
+    }
     loadDashboardData()
   }, [])
+
+  useEffect(() => {
+    if (user) {
+      const isAgent = user.roles?.some((r: string) => ['AGENT', 'IT_MANAGER', 'ADMIN'].includes(r))
+      if (isAgent) {
+        loadAssignedTickets()
+        loadRecentKBArticles()
+      }
+    }
+  }, [user])
 
   const loadDashboardData = async () => {
     try {
@@ -55,6 +120,77 @@ export default function DashboardPage() {
     }
   }
 
+  const loadAssignedTickets = async () => {
+    try {
+      setTicketsLoading(true)
+      const token = localStorage.getItem('accessToken')
+      const response = await fetch(
+        `/api/v1/tickets?onlyAssignedToMe=true&excludeStatuses=CLOSED,RESOLVED&limit=20`,
+        {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        }
+      )
+
+      const data = await response.json()
+      if (data.success) {
+        setTickets(data.data || [])
+      }
+    } catch (error) {
+      console.error('Failed to load assigned tickets:', error)
+    } finally {
+      setTicketsLoading(false)
+    }
+  }
+
+  const loadRecentKBArticles = async () => {
+    try {
+      setKbLoading(true)
+      const token = localStorage.getItem('accessToken')
+      const response = await fetch('/api/v1/kb?limit=5', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+
+      const data = await response.json()
+      if (data.success && Array.isArray(data.data)) {
+        setKbArticles(data.data.slice(0, 5))
+      }
+    } catch (error) {
+      console.error('Failed to load KB articles:', error)
+    } finally {
+      setKbLoading(false)
+    }
+  }
+
+  const handleStatusChange = async (ticketId: string, newStatus: TicketStatus) => {
+    const token = localStorage.getItem('accessToken')
+    try {
+      const response = await fetch(`/api/v1/tickets/${ticketId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ status: newStatus }),
+      })
+
+      const data = await response.json()
+      if (!data.success) {
+        throw new Error(data.error?.message || 'Failed to update status')
+      }
+
+      // If status is CLOSED or RESOLVED, remove from dashboard
+      if (newStatus === 'CLOSED' || newStatus === 'RESOLVED') {
+        setTickets(prev => prev.filter(t => t.id !== ticketId))
+      } else {
+        // Update the ticket status in the list
+        setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, status: newStatus } : t))
+      }
+    } catch (error) {
+      console.error('Failed to update ticket status:', error)
+      throw error
+    }
+  }
+
   const handleExport = async (type: string) => {
     try {
       const token = localStorage.getItem('accessToken')
@@ -75,6 +211,8 @@ export default function DashboardPage() {
       console.error('Failed to export report:', error)
     }
   }
+
+  const isAgent = user?.roles?.some((r: string) => ['AGENT', 'IT_MANAGER', 'ADMIN'].includes(r))
 
   if (loading) {
     return <div style={{ padding: '2rem' }}>Loading dashboard...</div>
@@ -253,6 +391,68 @@ export default function DashboardPage() {
         </>
       )}
 
+      {isAgent && (
+        <>
+          <div style={{ marginBottom: '2rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h2 style={{ margin: 0 }}>My Assigned Tickets</h2>
+              <Link href="/tickets" className="btn btn-secondary" style={{ fontSize: '0.875rem' }}>
+                View All Tickets
+              </Link>
+            </div>
+            {ticketsLoading ? (
+              <div style={{ padding: '2rem', textAlign: 'center' }}>Loading tickets...</div>
+            ) : (
+              <TicketsTable
+                tickets={tickets}
+                onStatusChange={handleStatusChange}
+                showQuickActions={true}
+                onRefresh={loadAssignedTickets}
+              />
+            )}
+          </div>
+
+          <div style={{ marginBottom: '2rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h2 style={{ margin: 0 }}>Recent Knowledge Base Articles</h2>
+              <Link href="/kb" className="btn btn-secondary" style={{ fontSize: '0.875rem' }}>
+                View All Articles
+              </Link>
+            </div>
+            {kbLoading ? (
+              <div style={{ padding: '2rem', textAlign: 'center' }}>Loading articles...</div>
+            ) : kbArticles.length > 0 ? (
+              <div className="card" style={{ padding: 0 }}>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  {kbArticles.map((article) => (
+                    <Link
+                      key={article.id}
+                      href={`/kb/${article.slug}`}
+                      style={{
+                        padding: '1rem',
+                        borderBottom: '1px solid var(--border-color)',
+                        textDecoration: 'none',
+                        color: 'inherit',
+                        display: 'block',
+                      }}
+                    >
+                      <h3 style={{ margin: 0, marginBottom: '0.5rem', fontSize: '1rem' }}>{article.title}</h3>
+                      <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                        Updated: {new Date(article.updatedAt).toLocaleDateString()}
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                No knowledge base articles found.
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
       <div style={{ marginTop: '2rem' }}>
         <h2 style={{ marginBottom: '1rem' }}>Quick Links</h2>
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
@@ -307,45 +507,6 @@ export default function DashboardPage() {
             }}
           >
             Knowledge Base
-          </Link>
-          <Link
-            href="/admin/sla"
-            style={{
-              padding: '0.75rem 1.5rem',
-              backgroundColor: 'var(--bg-secondary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '6px',
-              textDecoration: 'none',
-              color: 'var(--text-primary)',
-            }}
-          >
-            SLA Management
-          </Link>
-          <Link
-            href="/admin/config"
-            style={{
-              padding: '0.75rem 1.5rem',
-              backgroundColor: 'var(--bg-secondary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '6px',
-              textDecoration: 'none',
-              color: 'var(--text-primary)',
-            }}
-          >
-            Configuration
-          </Link>
-          <Link
-            href="/admin/users"
-            style={{
-              padding: '0.75rem 1.5rem',
-              backgroundColor: 'var(--bg-secondary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '6px',
-              textDecoration: 'none',
-              color: 'var(--text-primary)',
-            }}
-          >
-            User Management
           </Link>
         </div>
       </div>

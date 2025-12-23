@@ -177,10 +177,15 @@ model EmailConfiguration {
   password               String
   encryption             EmailEncryption @default(SSL)
   pollingIntervalMinutes Int             @default(5)
+  organizationId         String?         // Organization-specific email config
   createdAt              DateTime        @default(now())
   updatedAt              DateTime        @updatedAt
 
+  organization           Organization?   @relation("OrganizationEmailConfig", fields: [organizationId], references: [id], onDelete: Cascade)
+
   @@index([protocol])
+  @@index([organizationId])
+  @@unique([organizationId]) // One email config per organization
 }
 
 enum ArticleStatus {
@@ -794,6 +799,7 @@ model Organization {
   auditLogs   AuditLog[]       @relation("AuditLogOrganization")
   auditConfig AuditConfig?     @relation("AuditConfigOrganization")
   customAssetTypes CustomAssetType[] @relation("CustomAssetTypeOrganization")
+  emailConfig EmailConfiguration? @relation("OrganizationEmailConfig")
 
   @@index([slug])
   @@index([isActive])

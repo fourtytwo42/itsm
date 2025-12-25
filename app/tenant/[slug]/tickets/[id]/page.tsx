@@ -3,6 +3,9 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import rehypeRaw from 'rehype-raw'
 
 interface Ticket {
   id: string
@@ -209,7 +212,48 @@ export default function TenantTicketDetailPage() {
               <span style={{ color: 'var(--text-secondary)' }}>{new Date(ticket.createdAt).toLocaleString()}</span>
             </div>
             <h1 style={{ marginBottom: '0.5rem' }}>{ticket.subject}</h1>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>{ticket.description}</p>
+            <div style={{ color: 'var(--text-secondary)', marginBottom: '0.75rem', lineHeight: 1.6 }}>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeRaw]}
+                components={{
+                  p: ({ children }: any) => <p style={{ margin: '0 0 0.5rem 0' }}>{children}</p>,
+                  ul: ({ children }: any) => <ul style={{ margin: '0 0 0.5rem 0', paddingLeft: '1.5rem' }}>{children}</ul>,
+                  ol: ({ children }: any) => <ol style={{ margin: '0 0 0.5rem 0', paddingLeft: '1.5rem' }}>{children}</ol>,
+                  li: ({ children }: any) => <li style={{ margin: '0.25rem 0' }}>{children}</li>,
+                  code: ({ children, className }: any) => (
+                    <code
+                      style={{
+                        backgroundColor: 'rgba(0,0,0,0.1)',
+                        padding: '0.15rem 0.3rem',
+                        borderRadius: '4px',
+                        fontSize: '0.9em',
+                        fontFamily: 'monospace',
+                      }}
+                    >
+                      {children}
+                    </code>
+                  ),
+                  pre: ({ children }: any) => (
+                    <pre
+                      style={{
+                        backgroundColor: 'rgba(0,0,0,0.05)',
+                        padding: '0.75rem',
+                        borderRadius: '6px',
+                        overflow: 'auto',
+                        fontSize: '0.875rem',
+                        fontFamily: 'monospace',
+                        margin: '0.5rem 0',
+                      }}
+                    >
+                      {children}
+                    </pre>
+                  ),
+                }}
+              >
+                {ticket.description}
+              </ReactMarkdown>
+            </div>
             
             {/* Submitter Information */}
             <div style={{ 
@@ -359,7 +403,33 @@ export default function TenantTicketDetailPage() {
                       {new Date(comment.createdAt).toLocaleString()}
                     </span>
                   </div>
-                  <p style={{ margin: 0, fontSize: '0.875rem', whiteSpace: 'pre-wrap' }}>{comment.body}</p>
+                  <div style={{ fontSize: '0.875rem', lineHeight: 1.5 }}>
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      rehypePlugins={[rehypeRaw]}
+                      components={{
+                        p: ({ children }: any) => <p style={{ margin: '0 0 0.5rem 0' }}>{children}</p>,
+                        ul: ({ children }: any) => <ul style={{ margin: '0 0 0.5rem 0', paddingLeft: '1.5rem' }}>{children}</ul>,
+                        ol: ({ children }: any) => <ol style={{ margin: '0 0 0.5rem 0', paddingLeft: '1.5rem' }}>{children}</ol>,
+                        li: ({ children }: any) => <li style={{ margin: '0.25rem 0' }}>{children}</li>,
+                        code: ({ children }: any) => (
+                          <code
+                            style={{
+                              backgroundColor: 'rgba(0,0,0,0.1)',
+                              padding: '0.15rem 0.3rem',
+                              borderRadius: '4px',
+                              fontSize: '0.85em',
+                              fontFamily: 'monospace',
+                            }}
+                          >
+                            {children}
+                          </code>
+                        ),
+                      }}
+                    >
+                      {comment.body}
+                    </ReactMarkdown>
+                  </div>
                 </div>
               ))}
               {ticket.comments.length === 0 && (

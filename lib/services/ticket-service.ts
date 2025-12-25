@@ -226,7 +226,10 @@ export async function listTickets(params?: {
   }
 
   // Filter by organization - if user is not GLOBAL_ADMIN, filter by their organization
+  // For END_USER, also filter to only tickets they requested
   if (params?.userId && params?.userRoles) {
+    const isEndUser = params.userRoles.includes('END_USER')
+    
     if (!params.userRoles.includes('GLOBAL_ADMIN')) {
       // Get user's organization
       const user = await prisma.user.findUnique({
@@ -247,6 +250,11 @@ export async function listTickets(params?: {
           },
         }
       }
+    }
+    
+    // For END_USER, only show tickets they requested
+    if (isEndUser) {
+      where.requesterId = params.userId
     }
   }
 

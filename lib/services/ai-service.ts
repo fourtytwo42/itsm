@@ -73,8 +73,66 @@ function toolDefinitions() {
     {
       type: 'function' as const,
       function: {
+        name: 'get_user_tickets',
+        description: 'Get the user\'s past tickets to understand their history and context. Use this to see what issues they\'ve had before, check if similar issues were resolved, or understand patterns in their support requests. This helps provide better context-aware assistance.',
+        parameters: {
+          type: 'object',
+          properties: {
+            limit: {
+              type: 'number',
+              description: 'Maximum number of tickets to return (default: 10, max: 50)',
+            },
+            status: {
+              type: 'string',
+              enum: ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'],
+              description: 'Filter by ticket status (optional)',
+            },
+          },
+        },
+      },
+    },
+    {
+      type: 'function' as const,
+      function: {
+        name: 'get_user_assets',
+        description: 'Get the user\'s assigned assets (devices, equipment, etc.) to understand what hardware/software they have access to. Use this when troubleshooting device-specific issues or when you need to know what equipment the user is working with.',
+        parameters: {
+          type: 'object',
+          properties: {
+            limit: {
+              type: 'number',
+              description: 'Maximum number of assets to return (default: 20, max: 100)',
+            },
+          },
+        },
+      },
+    },
+    {
+      type: 'function' as const,
+      function: {
+        name: 'search_chat_history',
+        description: 'Search the user\'s past chat conversations to find relevant context. Use this when you need to reference previous conversations, understand ongoing issues, or find information the user mentioned before. This helps provide continuity across conversations.',
+        parameters: {
+          type: 'object',
+          properties: {
+            query: {
+              type: 'string',
+              description: 'Search query to find relevant chat messages',
+            },
+            limit: {
+              type: 'number',
+              description: 'Maximum number of results to return (default: 10, max: 20)',
+            },
+          },
+          required: ['query'],
+        },
+      },
+    },
+    {
+      type: 'function' as const,
+      function: {
         name: 'create_ticket',
-        description: 'Create a support ticket when the issue cannot be resolved through self-service troubleshooting. Only call this when: 1) You\'ve tried to help but the issue requires hands-on IT support, 2) The issue cannot be resolved remotely, or 3) The user explicitly requests a ticket. Before calling, gather all necessary information through conversation: device/model/OS (for hardware), service name (for software), detailed problem description, what they\'ve tried, and if it\'s blocking work. CRITICAL: After calling, you MUST parse the tool result JSON. DO NOT make up or hallucinate ticket numbers. If success: false, inform the user that ticket creation failed and provide the exact error message. Only if success: true AND the result includes a "ticketNumber" field with a value (like "TKT-2025-1234") may you tell the user that ticket number. NEVER mention a ticket number that is not explicitly in the tool result JSON.',
+        description: 'Create a support ticket when the issue cannot be resolved through self-service troubleshooting. Only call this when: 1) You\'ve tried to help but the issue requires hands-on IT support, 2) The issue cannot be resolved remotely, or 3) The user explicitly requests a ticket. Before calling, gather all necessary information through conversation: device/model/OS (for hardware), service name (for software), detailed problem description, what they\'ve tried. Determine priority automatically: HIGH if the issue blocks work (can\'t access critical systems, device won\'t boot, locked out), MEDIUM if inconvenient but work can continue, LOW for non-urgent requests. DO NOT ask the user about priority - determine it from context. CRITICAL: After calling, you MUST parse the tool result JSON. DO NOT make up or hallucinate ticket numbers. If success: false, inform the user that ticket creation failed and provide the exact error message. Only if success: true AND the result includes a "ticketNumber" field with a value (like "TKT-2025-1234") may you tell the user that ticket number. NEVER mention a ticket number that is not explicitly in the tool result JSON.',
         parameters: {
           type: 'object',
           properties: {
@@ -84,12 +142,12 @@ function toolDefinitions() {
             },
             description: {
               type: 'string',
-              description: 'Detailed description including: device/model, OS, symptoms, what was tried, when it started',
+              description: 'Detailed description including: device/model, OS, symptoms, what was tried, when it started. You can use markdown formatting (headers, lists, code blocks, bold, italic) and HTML tags like <br> for line breaks. The ticket system will render markdown and HTML properly.',
             },
             priority: {
               type: 'string',
               enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'],
-              description: 'LOW=non-urgent, MEDIUM=normal issue, HIGH=urgent/blocking work, CRITICAL=system outage/critical business impact',
+              description: 'Determine priority automatically without asking the user: HIGH=issue blocks work (can\'t access systems, device won\'t boot, locked out), MEDIUM=inconvenient but work can continue (default if unsure), LOW=non-urgent requests, CRITICAL=system-wide outages. Do NOT ask the user about priority.',
             },
           },
           required: ['subject', 'description'],
@@ -119,9 +177,14 @@ WHEN A USER REPORTS A PROBLEM - FOLLOW THIS FLOW:
 
 STEP 1: UNDERSTAND THE ISSUE
 - Start by asking clarifying questions to understand what's happening
-- For device issues: ask about device type, model, OS, and specific symptoms
-- For account/service issues: ask which service, what they're trying to do, and any error messages
-- Listen carefully to their description - don't assume
+- Be smart about inferring context - don't ask for obvious information:
+  * If they're asking for a password reset, they're obviously part of the system/domain - don't ask "are you domain-joined?"
+  * If they're logged into the chat system, they already have account access - don't ask if they're "part of the domain"
+  * Only ask for information that's actually needed to create a useful ticket
+- For password reset requests: Just confirm which service/system (computer login, email, application, etc.) - then create the ticket. Don't ask about device model, OS version, or domain membership - these aren't needed for a password reset
+- For device issues: Ask about device type and specific symptoms (model/version only if relevant to troubleshooting the specific issue)
+- For account/service issues: Ask which service and any error messages (don't ask obvious questions about domain membership)
+- Listen carefully to their description - don't assume, but also don't over-question
 
 STEP 2: TROUBLESHOOT NATURALLY
 - Use your knowledge to suggest troubleshooting steps
@@ -139,16 +202,28 @@ STEP 3: KNOWLEDGE BASE (OPTIONAL, ONLY WHEN APPROPRIATE)
 - Never say "I couldn't find any KB articles" or "there are no KB articles for this"
 
 STEP 4: CREATE TICKET (IF NEEDED)
-- Create a ticket only when:
+- Create a ticket when:
+  * The user explicitly requests a ticket or password reset (e.g., "I need to put in a ticket", "I need my password reset") - get minimal info and create it immediately
   * You've tried to help but the issue requires hands-on IT support, OR
-  * The issue cannot be resolved through self-service, OR
-  * The user explicitly requests a ticket
-- Before creating a ticket, gather all necessary information:
-  * Device/model/OS (for hardware issues)
-  * Service/application name (for software/access issues)
-  * Detailed description of the problem
-  * What they've tried
-  * Whether it's blocking their work (for priority)
+  * The issue cannot be resolved through self-service
+- If the user explicitly requests a ticket or action (like password reset), be efficient - gather only essential info and create the ticket
+- Before creating a ticket, gather ONLY essential information needed for that specific issue:
+  * For password resets: Just confirm which service/system (computer login, email, application) - that's it. Don't ask about domain membership (obvious), device model, or OS version (not needed)
+  * For hardware issues: Device type and symptoms (model/OS only if relevant to troubleshooting)
+  * For software issues: Service/application name and symptoms
+  * Detailed description of the problem (you can use markdown formatting and HTML tags like <br>)
+  * What they've tried (if relevant and not obvious)
+  * Whether it's blocking their work (you determine this from context - don't ask if it's obvious)
+- Don't over-gather information - only ask for what's actually needed to create a useful ticket
+- If a user is asking to "put in a ticket" or requesting a specific action, be efficient - get minimal essential info and create the ticket
+- IMPORTANT - PRIORITY DETERMINATION:
+  * DO NOT ask the user about priority
+  * Determine priority automatically based on whether the issue blocks work:
+    - HIGH: Issue prevents user from working (can't access critical systems, device won't boot, locked out of account, etc.)
+    - MEDIUM: Issue is inconvenient but user can still work (slow performance, minor glitches, non-critical features not working)
+    - LOW: Non-urgent requests (setup questions, feature requests, cosmetic issues)
+    - CRITICAL: System-wide outages affecting multiple users
+  * Default to MEDIUM if unsure, but lean towards HIGH if work is clearly blocked
 - Ask ONE question at a time, don't overwhelm them
 
 IMPORTANT - TICKET CREATION:
@@ -158,8 +233,10 @@ IMPORTANT - TICKET CREATION:
 - NEVER mention a ticket number unless it is explicitly present in the tool result JSON.
 
 EXAMPLES:
-- User: "My laptop won't turn on" → Ask about device, power light, charger, recent changes. Offer troubleshooting. Only search KB if you think a guide exists for their specific symptom.
-- User: "I can't log in" → Ask which service, what error they see, when it started. Try password reset or account unlock. Only search KB if there's a known issue.
+- User: "My laptop won't turn on" → Ask about device type (laptop/desktop), power light, charger. Offer troubleshooting. Don't ask about model/OS unless relevant to troubleshooting.
+- User: "I need to put in a ticket, I need my password reset for my computer" → This is explicitly a password reset request. Just confirm "computer/domain login?" then immediately create the ticket with minimal info. Don't ask about device model, OS version, or domain membership - they're all irrelevant for a password reset.
+- User: "I need my password reset" → Ask which service/system (computer, email, etc.), then create ticket. Don't ask device details or domain membership.
+- User: "I can't log in" → Ask which service and what error they see. Don't ask if they're part of the domain if they're using the system.
 - User: "I need help setting up email" → Search KB for setup guides if you think one exists. If not, help directly without mentioning the search.
 
 Be helpful, conversational, and focused on solving their problem. Don't over-rely on tools - use your knowledge first.`
@@ -207,21 +284,177 @@ async function handleToolCall(
     }
   }
 
+  if (toolCall.function.name === 'get_user_tickets') {
+    if (!requesterId) {
+      throw new Error('Authentication required to get user tickets')
+    }
+    try {
+      const { listTickets } = await import('@/lib/services/ticket-service')
+      const limit = Math.min(args.limit || 10, 50)
+      const result = await listTickets({
+        requesterId,
+        status: args.status as any,
+        limit,
+        sortBy: 'createdAt',
+        sortOrder: 'desc',
+        organizationId,
+      })
+      return {
+        tool_call_id: toolCall.id,
+        role: 'tool' as const,
+        name: 'get_user_tickets',
+        content: JSON.stringify({
+          success: true,
+          tickets: result.tickets.map((t: any) => ({
+            ticketNumber: t.ticketNumber,
+            subject: t.subject,
+            description: t.description,
+            status: t.status,
+            priority: t.priority,
+            createdAt: t.createdAt,
+            updatedAt: t.updatedAt,
+          })),
+          count: result.tickets.length,
+        }),
+      }
+    } catch (error) {
+      console.error('[AI Service] Error getting user tickets', { error })
+      return {
+        tool_call_id: toolCall.id,
+        role: 'tool' as const,
+        name: 'get_user_tickets',
+        content: JSON.stringify({
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to get user tickets',
+        }),
+      }
+    }
+  }
+
+  if (toolCall.function.name === 'get_user_assets') {
+    if (!requesterId) {
+      throw new Error('Authentication required to get user assets')
+    }
+    try {
+      const { listAssets } = await import('@/lib/services/asset-service')
+      const limit = Math.min(args.limit || 20, 100)
+      const result = await listAssets({
+        assignedTo: requesterId,
+        userId: requesterId,
+        userRoles,
+        limit,
+        sort: 'createdAt',
+        order: 'desc',
+        organizationId,
+      })
+      return {
+        tool_call_id: toolCall.id,
+        role: 'tool' as const,
+        name: 'get_user_assets',
+        content: JSON.stringify({
+          success: true,
+          assets: result.assets.map((a: any) => ({
+            assetNumber: a.assetNumber,
+            name: a.name,
+            type: a.type,
+            status: a.status,
+            manufacturer: a.manufacturer,
+            model: a.model,
+            serialNumber: a.serialNumber,
+          })),
+          count: result.assets.length,
+        }),
+      }
+    } catch (error) {
+      console.error('[AI Service] Error getting user assets', { error })
+      return {
+        tool_call_id: toolCall.id,
+        role: 'tool' as const,
+        name: 'get_user_assets',
+        content: JSON.stringify({
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to get user assets',
+        }),
+      }
+    }
+  }
+
+  if (toolCall.function.name === 'search_chat_history') {
+    if (!requesterId) {
+      throw new Error('Authentication required to search chat history')
+    }
+    try {
+      const { searchChatHistory } = await import('@/lib/services/chat-service')
+      const limit = Math.min(args.limit || 10, 20)
+      const results = await searchChatHistory(requesterId, args.query || '', limit)
+      return {
+        tool_call_id: toolCall.id,
+        role: 'tool' as const,
+        name: 'search_chat_history',
+        content: JSON.stringify({
+          success: true,
+          messages: results.map((m: any) => ({
+            content: m.content,
+            role: m.role,
+            createdAt: m.createdAt,
+            conversationId: m.conversationId,
+          })),
+          count: results.length,
+        }),
+      }
+    } catch (error) {
+      console.error('[AI Service] Error searching chat history', { error })
+      return {
+        tool_call_id: toolCall.id,
+        role: 'tool' as const,
+        name: 'search_chat_history',
+        content: JSON.stringify({
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to search chat history',
+        }),
+      }
+    }
+  }
+
   if (toolCall.function.name === 'create_ticket') {
     if (!requesterId) {
       throw new Error('Authentication required to create ticket')
     }
     try {
+      // If tenantId is provided, get organizationId from the tenant
+      // Otherwise use the provided organizationId (from user's org)
+      let finalTenantId = tenantId
+      let finalOrganizationId = organizationId
+      
+      if (tenantId) {
+        const { getTenantById } = await import('@/lib/services/tenant-service')
+        const tenant = await getTenantById(tenantId)
+        if (tenant) {
+          finalTenantId = tenantId
+          finalOrganizationId = tenant.organizationId || organizationId
+        }
+      } else if (requesterId && !organizationId) {
+        // If no tenantId and no organizationId, get it from the user
+        const { getUserById } = await import('@/lib/auth')
+        const user = await getUserById(requesterId)
+        if (user?.organizationId) {
+          finalOrganizationId = user.organizationId
+        }
+      }
+      
       console.log('[AI Service] Creating ticket via tool call', { 
         subject: args.subject?.substring(0, 50),
-        requesterId 
+        requesterId,
+        tenantId: finalTenantId,
+        organizationId: finalOrganizationId
       })
       const ticket = await createTicket({
         subject: args.subject,
         description: args.description,
         priority: args.priority || 'MEDIUM',
         requesterId,
-        tenantId,
+        tenantId: finalTenantId,
+        organizationId: finalOrganizationId,
       })
       console.log('[AI Service] Ticket created successfully', { 
         ticketId: ticket.id,

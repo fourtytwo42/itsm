@@ -126,15 +126,16 @@ export async function POST(request: NextRequest) {
     }
 
     // Save messages to database if we have a conversationId
+    // This stores a server-side copy for searchability, but localStorage remains the source of truth for AI context
     if (conversationId && authContext?.user?.id) {
-      // Save user message (last user message in the array)
+      // Save the last user message (the new one from this request)
       const userMessages = messages.filter((m) => m.role === 'user')
       if (userMessages.length > 0) {
         const lastUserMessage = userMessages[userMessages.length - 1]
         await saveMessage(conversationId, 'user', lastUserMessage.content || null)
       }
 
-      // Save assistant message with tool calls if present
+      // Save the assistant response with tool calls if present
       const toolCallsData = (result as any).toolCallsData || null
       await saveMessage(
         conversationId,

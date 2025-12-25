@@ -226,7 +226,10 @@ export async function listAssets(filters: ListAssetsFilters = {}) {
   }
 
   // Filter by organization - if user is not GLOBAL_ADMIN, filter by their organization
+  // For END_USER, also filter to only assets assigned to them
   if (filters.userId && filters.userRoles) {
+    const isEndUser = filters.userRoles.includes('END_USER')
+    
     if (!filters.userRoles.includes('GLOBAL_ADMIN')) {
       // Get user's organization
       const user = await prisma.user.findUnique({
@@ -239,6 +242,11 @@ export async function listAssets(filters: ListAssetsFilters = {}) {
         // User has no organization, return empty
         return { assets: [], total: 0, page, limit, totalPages: 0 }
       }
+    }
+    
+    // For END_USER, only show assets assigned to them
+    if (isEndUser) {
+      where.assignedToId = filters.userId
     }
   }
 

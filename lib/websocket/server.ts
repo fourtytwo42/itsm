@@ -29,15 +29,30 @@ class WSServer {
       try {
         // Extract token from query string or Authorization header
         const url = new URL(req.url || '', `http://${req.headers.host}`)
-        const token = url.searchParams.get('token') || this.extractTokenFromHeaders(req.headers)
+        let token = url.searchParams.get('token') || this.extractTokenFromHeaders(req.headers)
 
         if (!token) {
           ws.close(1008, 'Authentication required')
           return
         }
 
+        // Decode URL-encoded token if needed (tokens in query strings may be encoded)
+        try {
+          token = decodeURIComponent(token)
+        } catch (e) {
+          // Token might not be encoded, continue with original token
+        }
+
         // Verify JWT token
-        const payload = verifyToken(token)
+        let payload
+        try {
+          payload = verifyToken(token)
+        } catch (error) {
+          console.error('[WebSocket] Token verification failed:', error instanceof Error ? error.message : 'Unknown error')
+          ws.close(1008, 'Invalid or expired token')
+          return
+        }
+        
         const user = await getUserById(payload.userId)
 
         if (!user || !user.isActive) {

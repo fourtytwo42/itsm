@@ -25,11 +25,23 @@ interface Asset {
 export default function AssetsPage() {
   const [assets, setAssets] = useState<Asset[]>([])
   const [loading, setLoading] = useState(true)
+  const [user, setUser] = useState<any>(null)
   const [filters, setFilters] = useState({
     type: '',
     status: '',
     search: '',
   })
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem('user')
+    if (storedUser) {
+      try {
+        setUser(JSON.parse(storedUser))
+      } catch (e) {
+        // Invalid user data
+      }
+    }
+  }, [])
 
   useEffect(() => {
     loadAssets()
@@ -91,31 +103,35 @@ export default function AssetsPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <h1 style={{ margin: 0 }}>Assets (CMDB)</h1>
         <div style={{ display: 'flex', gap: '1rem' }}>
-          <button
-            onClick={handleExport}
-            style={{
-              padding: '0.5rem 1rem',
-              backgroundColor: 'var(--accent-primary)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer',
-            }}
-          >
-            Export CSV
-          </button>
-          <Link
-            href="/assets/new"
-            style={{
-              padding: '0.5rem 1rem',
-              backgroundColor: 'var(--accent-primary)',
-              color: 'white',
-              textDecoration: 'none',
-              borderRadius: '6px',
-            }}
-          >
-            New Asset
-          </Link>
+          {user?.roles && !user.roles.includes('END_USER') && (
+            <button
+              onClick={handleExport}
+              style={{
+                padding: '0.5rem 1rem',
+                backgroundColor: 'var(--accent-primary)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+              }}
+            >
+              Export CSV
+            </button>
+          )}
+          {user?.roles && !user.roles.includes('END_USER') && (
+            <Link
+              href="/assets/new"
+              style={{
+                padding: '0.5rem 1rem',
+                backgroundColor: 'var(--accent-primary)',
+                color: 'white',
+                textDecoration: 'none',
+                borderRadius: '6px',
+              }}
+            >
+              New Asset
+            </Link>
+          )}
         </div>
       </div>
 

@@ -62,7 +62,7 @@ export default function EditTenantPage() {
   const [uploadingLogo, setUploadingLogo] = useState(false)
   const [error, setError] = useState('')
   const [logoPreview, setLogoPreview] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'basic' | 'categories' | 'kb' | 'fields' | 'assignments'>('basic')
+  const [activeTab, setActiveTab] = useState<'basic' | 'categories' | 'kb' | 'fields' | 'assignments' | 'ai-rules'>('basic')
   const [allKBArticles, setAllKBArticles] = useState<KBArticle[]>([])
   const [allUsers, setAllUsers] = useState<User[]>([])
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
@@ -72,6 +72,28 @@ export default function EditTenantPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>('')
   const [assignAllCategories, setAssignAllCategories] = useState(false)
   const [copiedUrl, setCopiedUrl] = useState(false)
+
+  // AI Rules state
+  const [aiRules, setAiRules] = useState<Array<{
+    id: string
+    name: string
+    description?: string
+    content: string
+    priority: number
+    isActive: boolean
+    createdAt: string
+    updatedAt: string
+  }>>([])
+  const [loadingAIRules, setLoadingAIRules] = useState(false)
+  const [showAIRuleModal, setShowAIRuleModal] = useState(false)
+  const [editingRule, setEditingRule] = useState<typeof aiRules[0] | null>(null)
+  const [ruleFormData, setRuleFormData] = useState({
+    name: '',
+    description: '',
+    content: '',
+    priority: 0,
+    isActive: true,
+  })
 
   const [formData, setFormData] = useState({
     name: '',
@@ -86,7 +108,16 @@ export default function EditTenantPage() {
     loadTenant()
     loadKBArticles()
     loadUsers()
+    if (tenantId) {
+      loadAIRules()
+    }
   }, [tenantId])
+  
+  useEffect(() => {
+    if (activeTab === 'ai-rules' && tenantId) {
+      loadAIRules()
+    }
+  }, [activeTab, tenantId])
 
   const loadTenant = async () => {
     try {
@@ -154,6 +185,123 @@ export default function EditTenantPage() {
       }
     } catch (err) {
       // Ignore errors
+    }
+  }
+
+  const loadAIRules = async () => {
+    if (!tenantId) return
+    try {
+      setLoadingAIRules(true)
+      const token = localStorage.getItem('accessToken')
+      const response = await fetch(`/api/v1/admin/tenants/${tenantId}/ai-rules`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      const data = await response.json()
+      if (data.success) {
+        setAiRules(data.data || [])
+      }
+    } catch (err) {
+      console.error('Error loading AI rules:', err)
+    } finally {
+      setLoadingAIRules(false)
+    }
+  }
+
+  const openAIRuleModal = (rule?: typeof aiRules[0]) => {
+    if (rule) {
+      setEditingRule(rule)
+      setRuleFormData({
+        name: rule.name,
+        description: rule.description || '',
+        content: rule.content,
+        priority: rule.priority,
+        isActive: rule.isActive,
+      })
+    } else {
+      setEditingRule(null)
+      setRuleFormData({
+        name: '',
+        description: '',
+        content: '',
+        priority: 0,
+        isActive: true,
+      })
+    }
+    setShowAIRuleModal(true)
+  }
+
+  const closeAIRuleModal = () => {
+    setShowAIRuleModal(false)
+    setEditingRule(null)
+    setRuleFormData({
+      name: '',
+      description: '',
+      content: '',
+      priority: 0,
+      isActive: true,
+    })
+  }
+
+  const saveAIRule = async () => {
+    if (!tenantId) return
+    try {
+      const token = localStorage.getItem('accessToken')
+      const url = editingRule
+        ? `/api/v1/admin/tenants/${tenantId}/ai-rules/${editingRule.id}`
+        : `/api/v1/admin/tenants/${tenantId}/ai-rules`
+      
+      const response = await fetch(url, {
+        method: editingRule ? 'PUT' : 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(ruleFormData),
+      })
+
+      const data = await response.json()
+      if (data.success) {
+        await loadAIRules()
+        closeAIRuleModal()
+        setError('')
+        setTimeout(() => {
+          setError('AI rule saved successfully!')
+          setTimeout(() => setError(''), 3000)
+        }, 100)
+      } else {
+        setError(data.error?.message || 'Failed to save AI rule')
+      }
+    } catch (err) {
+      setError('Failed to save AI rule')
+      console.error('Error saving AI rule:', err)
+    }
+  }
+
+  const deleteAIRule = async (ruleId: string) => {
+    if (!tenantId || !confirm('Are you sure you want to delete this AI rule?')) return
+    try {
+      const token = localStorage.getItem('accessToken')
+      const response = await fetch(`/api/v1/admin/tenants/${tenantId}/ai-rules/${ruleId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      const data = await response.json()
+      if (data.success) {
+        await loadAIRules()
+        setError('')
+        setTimeout(() => {
+          setError('AI rule deleted successfully!')
+          setTimeout(() => setError(''), 3000)
+        }, 100)
+      } else {
+        setError(data.error?.message || 'Failed to delete AI rule')
+      }
+    } catch (err) {
+      setError('Failed to delete AI rule')
+      console.error('Error deleting AI rule:', err)
     }
   }
 
@@ -418,7 +566,7 @@ export default function EditTenantPage() {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '2rem', borderBottom: '1px solid var(--border-color)' }}>
-        {(['basic', 'categories', 'kb', 'fields', 'assignments'] as const).map((tab) => (
+        {(['basic', 'categories', 'kb', 'fields', 'assignments', 'ai-rules'] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -432,7 +580,7 @@ export default function EditTenantPage() {
               textTransform: 'capitalize',
             }}
           >
-            {tab === 'kb' ? 'KB Articles' : tab}
+            {tab === 'kb' ? 'KB Articles' : tab === 'ai-rules' ? 'AI Rules' : tab}
           </button>
         ))}
       </div>
@@ -861,6 +1009,161 @@ export default function EditTenantPage() {
         </div>
       )}
 
+      {/* AI Rules Tab */}
+      {activeTab === 'ai-rules' && (
+        <div style={{ display: 'grid', gap: '1.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 style={{ margin: 0 }}>AI Rules</h3>
+            <button
+              onClick={() => openAIRuleModal()}
+              style={{
+                padding: '0.75rem 1.5rem',
+                backgroundColor: 'var(--accent-primary)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: 500,
+              }}
+            >
+              Create Rule
+            </button>
+          </div>
+
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+            Configure AI behavior rules for this tenant. Rules are applied in priority order (higher numbers first).
+            Rules similar to Cursor rules - use markdown to provide instructions to the AI assistant.
+          </p>
+
+          {loadingAIRules ? (
+            <p style={{ color: 'var(--text-secondary)' }}>Loading AI rules...</p>
+          ) : aiRules.length === 0 ? (
+            <div style={{
+              padding: '2rem',
+              textAlign: 'center',
+              backgroundColor: 'var(--bg-secondary)',
+              borderRadius: '8px',
+              border: '1px dashed var(--border-color)',
+            }}>
+              <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem' }}>No AI rules configured yet.</p>
+              <button
+                onClick={() => openAIRuleModal()}
+                style={{
+                  padding: '0.75rem 1.5rem',
+                  backgroundColor: 'var(--accent-primary)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                }}
+              >
+                Create First Rule
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gap: '1rem' }}>
+              {aiRules
+                .sort((a, b) => b.priority - a.priority)
+                .map((rule) => (
+                  <div
+                    key={rule.id}
+                    style={{
+                      padding: '1.5rem',
+                      backgroundColor: 'var(--bg-secondary)',
+                      borderRadius: '8px',
+                      border: '1px solid var(--border-color)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '1rem' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                          <h4 style={{ margin: 0, fontSize: '1.125rem' }}>{rule.name}</h4>
+                          <span
+                            style={{
+                              padding: '0.25rem 0.75rem',
+                              borderRadius: '12px',
+                              fontSize: '0.75rem',
+                              fontWeight: 500,
+                              backgroundColor: rule.isActive ? 'rgba(34, 197, 94, 0.1)' : 'rgba(156, 163, 175, 0.1)',
+                              color: rule.isActive ? 'rgb(34, 197, 94)' : 'rgb(156, 163, 175)',
+                            }}
+                          >
+                            {rule.isActive ? 'Active' : 'Inactive'}
+                          </span>
+                          <span
+                            style={{
+                              padding: '0.25rem 0.75rem',
+                              borderRadius: '12px',
+                              fontSize: '0.75rem',
+                              fontWeight: 500,
+                              backgroundColor: 'var(--bg-tertiary)',
+                              color: 'var(--text-secondary)',
+                            }}
+                          >
+                            Priority: {rule.priority}
+                          </span>
+                        </div>
+                        {rule.description && (
+                          <p style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem', fontSize: '0.875rem' }}>
+                            {rule.description}
+                          </p>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                          onClick={() => openAIRuleModal(rule)}
+                          style={{
+                            padding: '0.5rem 1rem',
+                            backgroundColor: 'var(--bg-tertiary)',
+                            color: 'var(--text-primary)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            fontSize: '0.875rem',
+                          }}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => deleteAIRule(rule.id)}
+                          style={{
+                            padding: '0.5rem 1rem',
+                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                            color: 'var(--error)',
+                            border: 'none',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            fontSize: '0.875rem',
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                    <div
+                      style={{
+                        padding: '1rem',
+                        backgroundColor: 'var(--bg-primary)',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border-color)',
+                        fontFamily: 'monospace',
+                        fontSize: '0.875rem',
+                        whiteSpace: 'pre-wrap',
+                        maxHeight: '200px',
+                        overflowY: 'auto',
+                        color: 'var(--text-secondary)',
+                      }}
+                    >
+                      {rule.content}
+                    </div>
+                  </div>
+                ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Assignments Tab */}
       {activeTab === 'assignments' && (
         <div style={{ display: 'grid', gap: '1.5rem' }}>
@@ -992,6 +1295,175 @@ export default function EditTenantPage() {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* AI Rule Modal */}
+      {showAIRuleModal && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+          onClick={closeAIRuleModal}
+        >
+          <div
+            style={{
+              backgroundColor: 'var(--bg-primary)',
+              borderRadius: '8px',
+              padding: '2rem',
+              maxWidth: '800px',
+              width: '90%',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              border: '1px solid var(--border-color)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 style={{ marginTop: 0, marginBottom: '1.5rem' }}>
+              {editingRule ? 'Edit AI Rule' : 'Create AI Rule'}
+            </h2>
+
+            <div style={{ display: 'grid', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
+                  Name *
+                </label>
+                <input
+                  type="text"
+                  value={ruleFormData.name}
+                  onChange={(e) => setRuleFormData({ ...ruleFormData, name: e.target.value })}
+                  placeholder="e.g., system-behavior, ticket-creation"
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--bg-primary)',
+                    color: 'var(--text-primary)',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
+                  Description
+                </label>
+                <input
+                  type="text"
+                  value={ruleFormData.description}
+                  onChange={(e) => setRuleFormData({ ...ruleFormData, description: e.target.value })}
+                  placeholder="Optional description of what this rule does"
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--bg-primary)',
+                    color: 'var(--text-primary)',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
+                  Priority *
+                </label>
+                <input
+                  type="number"
+                  value={ruleFormData.priority}
+                  onChange={(e) => setRuleFormData({ ...ruleFormData, priority: parseInt(e.target.value) || 0 })}
+                  placeholder="0"
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--bg-primary)',
+                    color: 'var(--text-primary)',
+                  }}
+                />
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                  Higher priority rules are applied first. Rules are merged in priority order.
+                </p>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
+                  Content * (Markdown)
+                </label>
+                <textarea
+                  value={ruleFormData.content}
+                  onChange={(e) => setRuleFormData({ ...ruleFormData, content: e.target.value })}
+                  placeholder="Enter rule content in markdown format..."
+                  rows={12}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--bg-primary)',
+                    color: 'var(--text-primary)',
+                    fontFamily: 'monospace',
+                    fontSize: '0.875rem',
+                  }}
+                />
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                  Use markdown to provide instructions to the AI. This will be merged with the system message.
+                </p>
+              </div>
+
+              <div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={ruleFormData.isActive}
+                    onChange={(e) => setRuleFormData({ ...ruleFormData, isActive: e.target.checked })}
+                  />
+                  <span>Active (rule will be applied)</span>
+                </label>
+              </div>
+
+              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
+                <button
+                  onClick={closeAIRuleModal}
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    backgroundColor: 'var(--bg-tertiary)',
+                    color: 'var(--text-primary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveAIRule}
+                  disabled={!ruleFormData.name || !ruleFormData.content}
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    backgroundColor: 'var(--accent-primary)',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: !ruleFormData.name || !ruleFormData.content ? 'not-allowed' : 'pointer',
+                    opacity: !ruleFormData.name || !ruleFormData.content ? 0.6 : 1,
+                  }}
+                >
+                  {editingRule ? 'Update Rule' : 'Create Rule'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

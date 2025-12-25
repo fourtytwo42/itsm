@@ -86,3 +86,32 @@ export async function deleteConversation(conversationId: string, userId: string)
   })
 }
 
+/**
+ * Search chat history for a user
+ * Returns messages matching the search query across all conversations
+ */
+export async function searchChatHistory(userId: string, query: string, limit: number = 10): Promise<ChatMessage[]> {
+  return prisma.chatMessage.findMany({
+    where: {
+      conversation: {
+        userId, // Ensure user owns the conversation
+      },
+      content: {
+        contains: query,
+        mode: 'insensitive',
+      },
+    },
+    include: {
+      conversation: {
+        select: {
+          id: true,
+          title: true,
+          createdAt: true,
+        },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: limit,
+  })
+}
+

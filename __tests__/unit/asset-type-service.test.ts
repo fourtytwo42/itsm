@@ -5,6 +5,8 @@ import {
   updateCustomAssetType,
   deleteCustomAssetType,
   createAssetTypeCustomField,
+  listAssetTypeCustomFields,
+  getAssetTypeCustomFieldById,
   updateAssetTypeCustomField,
   deleteAssetTypeCustomField,
 } from '@/lib/services/asset-type-service'
@@ -17,6 +19,7 @@ const mockCustomAssetType = {
 }
 const mockAssetTypeCustomField = {
   create: jest.fn(),
+  findMany: jest.fn(),
   findFirst: jest.fn(),
   updateMany: jest.fn(),
   deleteMany: jest.fn(),
@@ -189,12 +192,21 @@ describe('Asset Type Service', () => {
     it('should update custom field', async () => {
       ;(prisma.assetTypeCustomField.updateMany as jest.Mock).mockResolvedValue({ count: 1 })
 
-      await updateAssetTypeCustomField('field-1', {
+      await updateAssetTypeCustomField('field-1', 'type-1', {
         label: 'Updated Label',
         required: false,
       })
 
-      expect(prisma.assetTypeCustomField.updateMany).toHaveBeenCalled()
+      expect(prisma.assetTypeCustomField.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'field-1',
+          customAssetTypeId: 'type-1',
+        },
+        data: {
+          label: 'Updated Label',
+          required: false,
+        },
+      })
     })
   })
 
@@ -202,12 +214,120 @@ describe('Asset Type Service', () => {
     it('should soft delete custom field', async () => {
       ;(prisma.assetTypeCustomField.updateMany as jest.Mock).mockResolvedValue({ count: 1 })
 
-      await deleteAssetTypeCustomField('field-1')
+      await deleteAssetTypeCustomField('field-1', 'type-1')
 
       expect(prisma.assetTypeCustomField.updateMany).toHaveBeenCalledWith({
-        where: { id: 'field-1' },
+        where: {
+          id: 'field-1',
+          customAssetTypeId: 'type-1',
+        },
         data: { isActive: false },
       })
+    })
+  })
+
+  describe('createAssetTypeCustomField edge cases', () => {
+    it('should use default values for required and order', async () => {
+      const mockField = {
+        id: 'field-1',
+        fieldName: 'serial_number',
+        label: 'Serial Number',
+        fieldType: 'text',
+        required: false,
+        order: 0,
+      }
+
+      ;(prisma.assetTypeCustomField.create as jest.Mock).mockResolvedValue(mockField)
+
+      await createAssetTypeCustomField({
+        customAssetTypeId: 'type-1',
+        fieldName: 'serial_number',
+        label: 'Serial Number',
+        fieldType: 'text',
+      })
+
+      expect(prisma.assetTypeCustomField.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          required: false,
+          order: 0,
+        }),
+      })
+    })
+  })
+
+  describe('getCustomAssetTypeById edge cases', () => {
+    it('should return null when asset type not found', async () => {
+      ;(prisma.customAssetType.findFirst as jest.Mock).mockResolvedValue(null)
+
+      const result = await getCustomAssetTypeById('non-existent', 'org-1')
+
+      expect(result).toBeNull()
+    })
+  })
+
+  describe('getAssetTypeCustomFieldById', () => {
+    it('should return custom field by id', async () => {
+      const mockField = {
+        id: 'field-1',
+        fieldName: 'serial_number',
+        label: 'Serial Number',
+        fieldType: 'text',
+      }
+
+      ;(prisma.assetTypeCustomField.findFirst as jest.Mock).mockResolvedValue(mockField)
+
+      const result = await getAssetTypeCustomFieldById('field-1', 'type-1')
+
+      expect(result).toEqual(mockField)
+      expect(prisma.assetTypeCustomField.findFirst).toHaveBeenCalledWith({
+        where: {
+          id: 'field-1',
+          customAssetTypeId: 'type-1',
+        },
+      })
+    })
+
+    it('should return null when field not found', async () => {
+      ;(prisma.assetTypeCustomField.findFirst as jest.Mock).mockResolvedValue(null)
+
+      const result = await getAssetTypeCustomFieldById('non-existent', 'type-1')
+
+      expect(result).toBeNull()
+    })
+  })
+
+  describe('listAssetTypeCustomFields', () => {
+    it('should list custom fields for asset type', async () => {
+      const mockFields = [
+        {
+          id: 'field-1',
+          fieldName: 'serial_number',
+          label: 'Serial Number',
+          fieldType: 'text',
+          order: 0,
+        },
+      ]
+
+      ;(prisma.assetTypeCustomField.findMany as jest.Mock).mockResolvedValue(mockFields)
+
+      const result = await listAssetTypeCustomFields('type-1')
+
+      expect(result).toEqual(mockFields)
+      expect(prisma.assetTypeCustomField.findMany).toHaveBeenCalledWith({
+        where: {
+          customAssetTypeId: 'type-1',
+          isActive: true,
+        },
+        orderBy: { order: 'asc' },
+      })
+    })
+
+    it('should return empty array when no fields exist', async () => {
+      ;(prisma.assetTypeCustomField.findMany as jest.Mock).mockResolvedValue([])
+
+      const result = await listAssetTypeCustomFields('type-1')
+
+      expect(result).toEqual([])
     })
   })
 })

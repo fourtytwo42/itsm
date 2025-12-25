@@ -15,8 +15,19 @@ const mockKnowledgeBaseArticle = {
   findMany: jest.fn(),
 }
 
+const mockTenantKBArticle = {
+  createMany: jest.fn(),
+  deleteMany: jest.fn(),
+}
+
+const mockUser = {
+  findUnique: jest.fn(),
+}
+
 const mockPrisma = {
   knowledgeBaseArticle: mockKnowledgeBaseArticle,
+  tenantKBArticle: mockTenantKBArticle,
+  user: mockUser,
 }
 
 jest.mock('@/lib/prisma', () => ({
@@ -114,6 +125,207 @@ describe('KB Service', () => {
   it('searchArticles should return empty for blank query', async () => {
     const result = await searchArticles('   ')
     expect(result).toEqual([])
+  })
+
+  describe('createArticle edge cases', () => {
+    it('should link article to specific tenants when tenantIds provided', async () => {
+      const mockArticle = { id: '1', title: 'A' }
+      ;(prisma.knowledgeBaseArticle.create as jest.Mock).mockResolvedValue(mockArticle)
+      ;(mockTenantKBArticle.createMany as jest.Mock).mockResolvedValue({ count: 2 })
+
+      await createArticle({
+        title: 'A',
+        content: 'C',
+        slug: 'a',
+        tenantIds: ['tenant-1', 'tenant-2'],
+      })
+
+      expect(mockTenantKBArticle.createMany).toHaveBeenCalledWith({
+        data: [
+          { tenantId: 'tenant-1', articleId: '1' },
+          { tenantId: 'tenant-2', articleId: '1' },
+        ],
+        skipDuplicates: true,
+      })
+    })
+
+    it('should not link to tenants when tenantIds is null (all tenants)', async () => {
+      const mockArticle = { id: '1', title: 'A' }
+      ;(prisma.knowledgeBaseArticle.create as jest.Mock).mockResolvedValue(mockArticle)
+
+      await createArticle({
+        title: 'A',
+        content: 'C',
+        slug: 'a',
+        tenantIds: null,
+      })
+
+      expect(mockTenantKBArticle.createMany).not.toHaveBeenCalled()
+    })
+
+    it('should not link to tenants when tenantIds is empty array', async () => {
+      const mockArticle = { id: '1', title: 'A' }
+      ;(prisma.knowledgeBaseArticle.create as jest.Mock).mockResolvedValue(mockArticle)
+
+      await createArticle({
+        title: 'A',
+        content: 'C',
+        slug: 'a',
+        tenantIds: [],
+      })
+
+      expect(mockTenantKBArticle.createMany).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('updateArticle edge cases', () => {
+    it('should update tenant associations when tenantIds provided', async () => {
+      const mockArticle = { id: '1', title: 'Updated' }
+      ;(prisma.knowledgeBaseArticle.update as jest.Mock).mockResolvedValue(mockArticle)
+      ;(mockTenantKBArticle.deleteMany as jest.Mock).mockResolvedValue({ count: 2 })
+      ;(mockTenantKBArticle.createMany as jest.Mock).mockResolvedValue({ count: 1 })
+
+      await updateArticle('1', { tenantIds: ['tenant-1'] })
+
+      expect(mockTenantKBArticle.deleteMany).toHaveBeenCalledWith({
+        where: { articleId: '1' },
+      })
+      expect(mockTenantKBArticle.createMany).toHaveBeenCalledWith({
+        data: [{ tenantId: 'tenant-1', articleId: '1' }],
+        skipDuplicates: true,
+      })
+    })
+
+    it('should remove all tenant associations when tenantIds is null', async () => {
+      const mockArticle = { id: '1', title: 'Updated' }
+      ;(prisma.knowledgeBaseArticle.update as jest.Mock).mockResolvedValue(mockArticle)
+      ;(mockTenantKBArticle.deleteMany as jest.Mock).mockResolvedValue({ count: 2 })
+
+      await updateArticle('1', { tenantIds: null })
+
+      expect(mockTenantKBArticle.deleteMany).toHaveBeenCalledWith({
+        where: { articleId: '1' },
+      })
+      expect(mockTenantKBArticle.createMany).not.toHaveBeenCalled()
+    })
+
+    it('should not update tenant associations when tenantIds is undefined', async () => {
+      const mockArticle = { id: '1', title: 'Updated' }
+      ;(prisma.knowledgeBaseArticle.update as jest.Mock).mockResolvedValue(mockArticle)
+
+      await updateArticle('1', { title: 'Updated' })
+
+      expect(mockTenantKBArticle.deleteMany).not.toHaveBeenCalled()
+      expect(mockTenantKBArticle.createMany).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('listArticles edge cases - organization filtering', () => {
+    beforeEach(() => {
+      ;(prisma.knowledgeBaseArticle.findMany as jest.Mock).mockResolvedValue([])
+    })
+
+    it('should return empty when user has no organization', async () => {
+      ;(prisma.user.findUnique as jest.Mock).mockResolvedValue({ organizationId: null })
+
+      const result = await listArticles({ userId: 'user-1', userRoles: ['END_USER'] })
+
+      expect(result).toEqual([])
+      expect(prisma.knowledgeBaseArticle.findMany).not.toHaveBeenCalled()
+    })
+
+    it('should filter by user organization when not GLOBAL_ADMIN', async () => {
+      ;(prisma.user.findUnique as jest.Mock).mockResolvedValue({ organizationId: 'org-1' })
+
+      await listArticles({ userId: 'user-1', userRoles: ['END_USER'] })
+
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        select: { organizationId: true },
+      })
+      expect(prisma.knowledgeBaseArticle.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            organizationId: 'org-1',
+          }),
+        })
+      )
+    })
+
+    it('should not filter by organization for GLOBAL_ADMIN', async () => {
+      await listArticles({ userId: 'admin-1', userRoles: ['GLOBAL_ADMIN'] })
+
+      expect(prisma.user.findUnique).not.toHaveBeenCalled()
+      expect(prisma.knowledgeBaseArticle.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.not.objectContaining({
+            organizationId: expect.anything(),
+          }),
+        })
+      )
+    })
+
+    it('should handle organizationId filter directly', async () => {
+      await listArticles({ organizationId: 'org-1' })
+
+      expect(prisma.knowledgeBaseArticle.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            organizationId: 'org-1',
+          }),
+        })
+      )
+    })
+
+    it('should filter by tenantId using join table', async () => {
+      await listArticles({ tenantId: 'tenant-1' })
+
+      expect(prisma.knowledgeBaseArticle.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            tenantKBArticles: {
+              some: {
+                tenantId: 'tenant-1',
+              },
+            },
+          }),
+        })
+      )
+    })
+  })
+
+  describe('searchArticles edge cases', () => {
+    it('should filter by tenantId when provided', async () => {
+      ;(prisma.knowledgeBaseArticle.findMany as jest.Mock).mockResolvedValue([])
+
+      await searchArticles('query', 'tenant-1')
+
+      expect(prisma.knowledgeBaseArticle.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            tenantKBArticles: {
+              some: {
+                tenantId: 'tenant-1',
+              },
+            },
+          }),
+        })
+      )
+    })
+
+    it('should not filter by tenant when tenantId not provided', async () => {
+      ;(prisma.knowledgeBaseArticle.findMany as jest.Mock).mockResolvedValue([])
+
+      await searchArticles('query')
+
+      expect(prisma.knowledgeBaseArticle.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.not.objectContaining({
+            tenantKBArticles: expect.anything(),
+          }),
+        })
+      )
+    })
   })
 })
 

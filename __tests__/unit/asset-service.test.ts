@@ -37,11 +37,16 @@ const mockCustomAssetType = {
   findUnique: jest.fn(),
 }
 
+const mockUser = {
+  findUnique: jest.fn(),
+}
+
 const mockPrisma = {
   asset: mockAsset,
   assetRelationship: mockAssetRelationship,
   ticketAssetRelation: mockTicketAssetRelation,
   customAssetType: mockCustomAssetType,
+  user: mockUser,
 }
 
 jest.mock('@/lib/prisma', () => ({
@@ -691,6 +696,66 @@ describe('Asset Service', () => {
 
       expect(result.imported).toBe(1)
       expect(result.errors.length).toBeGreaterThan(0)
+    })
+  })
+
+  describe('generateAssetNumber edge cases', () => {
+    beforeEach(() => {
+      ;(prisma.customAssetType.findUnique as jest.Mock).mockResolvedValue({
+        id: 'type-1',
+        name: 'Laptop',
+      })
+    })
+
+    it('should retry asset number generation when collision occurs', async () => {
+      // Mock findMany to return existing assets
+      ;(prisma.asset.findMany as jest.Mock).mockResolvedValue([
+        { assetNumber: 'AST-2025-0001' },
+        { assetNumber: 'AST-2025-0002' },
+      ])
+
+      // Mock findUnique to simulate collision on first attempt, success on second
+      ;(prisma.asset.findUnique as jest.Mock)
+        .mockResolvedValueOnce({ id: 'existing-asset-1' }) // First attempt: collision
+        .mockResolvedValueOnce(null) // Second attempt: success
+
+      ;(prisma.asset.create as jest.Mock).mockResolvedValue({
+        id: 'asset-1',
+        assetNumber: 'AST-2025-0003',
+        name: 'Laptop',
+        customAssetTypeId: 'type-1',
+      })
+
+      const result = await createAsset({
+        name: 'Laptop',
+        customAssetTypeId: 'type-1',
+        organizationId: 'org-1',
+      })
+
+      expect(result.assetNumber).toBe('AST-2025-0003')
+      // Should have checked for collision twice
+      expect(prisma.asset.findUnique).toHaveBeenCalledTimes(2)
+    })
+
+    it('should throw error when all retries exhausted for asset number generation', async () => {
+      // Mock findMany to return existing assets
+      ;(prisma.asset.findMany as jest.Mock).mockResolvedValue([
+        { assetNumber: 'AST-2025-0001' },
+      ])
+
+      // Mock findUnique to always return existing asset (all retries collide)
+      ;(prisma.asset.findUnique as jest.Mock).mockResolvedValue({ id: 'existing-asset' })
+
+      await expect(
+        createAsset({
+          name: 'Laptop',
+          customAssetTypeId: 'type-1',
+          organizationId: 'org-1',
+        })
+      ).rejects.toThrow('Failed to generate unique asset number after multiple attempts')
+
+      // Should have attempted maxRetries times (default 10)
+      expect(prisma.asset.findUnique).toHaveBeenCalledTimes(10)
     })
   })
 })

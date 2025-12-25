@@ -44,6 +44,13 @@ export async function createArticle(input: CreateArticleInput) {
     })
   }
 
+  // Generate embeddings for the article (async, don't wait)
+  if (article.status === ArticleStatus.PUBLISHED) {
+    import('@/lib/services/embedding-service')
+      .then(({ generateArticleEmbeddings }) => generateArticleEmbeddings(article.id))
+      .catch((error) => console.error('Failed to generate embeddings:', error))
+  }
+
   return article
 }
 
@@ -76,6 +83,13 @@ export async function updateArticle(id: string, input: UpdateArticleInput) {
         skipDuplicates: true,
       })
     }
+  }
+
+  // Regenerate embeddings if article was updated and is published
+  if (article.status === ArticleStatus.PUBLISHED) {
+    import('@/lib/services/embedding-service')
+      .then(({ generateArticleEmbeddings }) => generateArticleEmbeddings(article.id))
+      .catch((error) => console.error('Failed to regenerate embeddings:', error))
   }
 
   return article
@@ -135,8 +149,37 @@ export async function listArticles(params?: { status?: ArticleStatus; tag?: stri
   })
 }
 
-export async function searchArticles(query: string, tenantId?: string) {
+export async function searchArticles(
+  query: string,
+  tenantId?: string,
+  options?: {
+    organizationId?: string
+    userId?: string
+    userRoles?: string[]
+    useSemanticSearch?: boolean
+  }
+) {
   if (!query.trim()) return []
+
+  // Use semantic search if available and enabled
+  if (options?.useSemanticSearch !== false) {
+    try {
+      const { semanticSearchArticles } = await import('@/lib/services/embedding-service')
+      const results = await semanticSearchArticles(query, {
+        tenantId,
+        organizationId: options?.organizationId,
+        userId: options?.userId,
+        userRoles: options?.userRoles,
+        limit: 10,
+      })
+      return results
+    } catch (error) {
+      console.error('Semantic search failed, falling back to text search:', error)
+      // Fall through to text search
+    }
+  }
+
+  // Fallback to text search
   const q = query.toLowerCase()
   
   const where: any = {
@@ -157,9 +200,15 @@ export async function searchArticles(query: string, tenantId?: string) {
     }
   }
 
+  // Filter by organization if provided (and user is not GLOBAL_ADMIN)
+  if (options?.organizationId && !options.userRoles?.includes('GLOBAL_ADMIN')) {
+    where.organizationId = options.organizationId
+  }
+
   return prisma.knowledgeBaseArticle.findMany({
     where,
     orderBy: { createdAt: 'desc' },
+    take: 10,
   })
 }
 

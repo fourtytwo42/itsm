@@ -490,6 +490,442 @@ describe('User Service', () => {
     })
   })
 
+  describe('getUsers edge cases - organization filtering', () => {
+    it('should return empty when user has no organization', async () => {
+      ;(prisma.user.findUnique as jest.Mock).mockResolvedValue({ organizationId: null })
+
+      const result = await getUsers({ userId: 'user-1', userRoles: ['END_USER'] })
+
+      expect(result).toEqual({
+        users: [],
+        pagination: {
+          page: 1,
+          limit: 20,
+          total: 0,
+          totalPages: 0,
+        },
+      })
+      expect(prisma.user.findMany).not.toHaveBeenCalled()
+    })
+
+    it('should filter by user organization when not GLOBAL_ADMIN', async () => {
+      ;(prisma.user.findUnique as jest.Mock).mockResolvedValue({ organizationId: 'org-1' })
+      ;(prisma.user.findMany as jest.Mock).mockResolvedValue([])
+      ;(prisma.user.count as jest.Mock).mockResolvedValue(0)
+
+      await getUsers({ userId: 'user-1', userRoles: ['END_USER'] })
+
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        select: { organizationId: true },
+      })
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            organizationId: 'org-1',
+          }),
+        })
+      )
+    })
+
+    it('should not filter by organization for GLOBAL_ADMIN', async () => {
+      ;(prisma.user.findMany as jest.Mock).mockResolvedValue([])
+      ;(prisma.user.count as jest.Mock).mockResolvedValue(0)
+
+      await getUsers({ userId: 'admin-1', userRoles: ['GLOBAL_ADMIN'] })
+
+      expect(prisma.user.findUnique).not.toHaveBeenCalled()
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.not.objectContaining({
+            organizationId: expect.anything(),
+          }),
+        })
+      )
+    })
+
+    it('should handle organizationId filter directly', async () => {
+      ;(prisma.user.findMany as jest.Mock).mockResolvedValue([])
+      ;(prisma.user.count as jest.Mock).mockResolvedValue(0)
+
+      await getUsers({ organizationId: 'org-1' })
+
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            organizationId: 'org-1',
+          }),
+        })
+      )
+    })
+
+    it('should handle tenant filter with no assignments', async () => {
+      ;(prisma.tenantAssignment.findMany as jest.Mock).mockResolvedValue([])
+      ;(prisma.user.findMany as jest.Mock).mockResolvedValue([])
+      ;(prisma.user.count as jest.Mock).mockResolvedValue(0)
+
+      const result = await getUsers({ tenantId: 'tenant-1' })
+
+      expect(result).toEqual({
+        users: [],
+        pagination: {
+          page: 1,
+          limit: 20,
+          total: 0,
+          totalPages: 0,
+        },
+      })
+      expect(prisma.user.findMany).not.toHaveBeenCalled()
+    })
+
+    it('should handle userIds filter', async () => {
+      ;(prisma.user.findMany as jest.Mock).mockResolvedValue([])
+      ;(prisma.user.count as jest.Mock).mockResolvedValue(0)
+
+      await getUsers({ userIds: ['user-1', 'user-2'] })
+
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            id: { in: ['user-1', 'user-2'] },
+          }),
+        })
+      )
+    })
+
+    it('should handle isActive filter', async () => {
+      ;(prisma.user.findMany as jest.Mock).mockResolvedValue([])
+      ;(prisma.user.count as jest.Mock).mockResolvedValue(0)
+
+      await getUsers({ isActive: true })
+
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            isActive: true,
+          }),
+        })
+      )
+    })
+
+    it('should handle emailVerified filter', async () => {
+      ;(prisma.user.findMany as jest.Mock).mockResolvedValue([])
+      ;(prisma.user.count as jest.Mock).mockResolvedValue(0)
+
+      await getUsers({ emailVerified: true })
+
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            emailVerified: true,
+          }),
+        })
+      )
+    })
+  })
+
+  describe('assignAgentToTenant edge cases', () => {
+    it('should throw error if tenant not found', async () => {
+      const manager = {
+        id: 'manager-1',
+        organizationId: 'org-1',
+        roles: [{ role: { name: 'IT_MANAGER' } }],
+      }
+      ;(prisma.user.findUnique as jest.Mock).mockResolvedValueOnce(manager)
+      ;(prisma.tenant.findUnique as jest.Mock).mockResolvedValue(null)
+
+      await expect(
+        assignAgentToTenant('agent-1', 'tenant-1', 'manager-1')
+      ).rejects.toThrow('Tenant not found')
+    })
+
+    it('should throw error if agent not found', async () => {
+      const manager = {
+        id: 'manager-1',
+        organizationId: 'org-1',
+        roles: [{ role: { name: 'IT_MANAGER' } }],
+      }
+      const tenant = { id: 'tenant-1', organizationId: 'org-1' }
+      ;(prisma.user.findUnique as jest.Mock)
+        .mockResolvedValueOnce(manager)
+        .mockResolvedValueOnce(null)
+      ;(prisma.tenant.findUnique as jest.Mock).mockResolvedValue(tenant)
+
+      await expect(
+        assignAgentToTenant('agent-1', 'tenant-1', 'manager-1')
+      ).rejects.toThrow('Agent not found')
+    })
+
+    it('should throw error if user is not an agent', async () => {
+      const manager = {
+        id: 'manager-1',
+        organizationId: 'org-1',
+        roles: [{ role: { name: 'IT_MANAGER' } }],
+      }
+      const tenant = { id: 'tenant-1', organizationId: 'org-1' }
+      const agent = {
+        id: 'agent-1',
+        organizationId: 'org-1',
+        roles: [{ role: { name: 'END_USER' } }],
+      }
+      ;(prisma.user.findUnique as jest.Mock)
+        .mockResolvedValueOnce(manager)
+        .mockResolvedValueOnce(agent)
+      ;(prisma.tenant.findUnique as jest.Mock).mockResolvedValue(tenant)
+
+      await expect(
+        assignAgentToTenant('agent-1', 'tenant-1', 'manager-1')
+      ).rejects.toThrow('User is not an agent')
+    })
+
+    it('should throw error if agent belongs to different organization than tenant', async () => {
+      const manager = {
+        id: 'manager-1',
+        organizationId: 'org-1',
+        roles: [{ role: { name: 'IT_MANAGER' } }],
+      }
+      const tenant = { id: 'tenant-1', organizationId: 'org-1' }
+      const agent = {
+        id: 'agent-1',
+        organizationId: 'org-2',
+        roles: [{ role: { name: 'AGENT' } }],
+      }
+      ;(prisma.user.findUnique as jest.Mock)
+        .mockResolvedValueOnce(manager)
+        .mockResolvedValueOnce(agent)
+      ;(prisma.tenant.findUnique as jest.Mock).mockResolvedValue(tenant)
+
+      await expect(
+        assignAgentToTenant('agent-1', 'tenant-1', 'manager-1')
+      ).rejects.toThrow('Agent must belong to the same organization as the tenant')
+    })
+
+    it('should return existing assignment if already exists', async () => {
+      const manager = {
+        id: 'manager-1',
+        organizationId: 'org-1',
+        roles: [{ role: { name: 'IT_MANAGER' } }],
+      }
+      const tenant = { id: 'tenant-1', organizationId: 'org-1' }
+      const agent = {
+        id: 'agent-1',
+        organizationId: 'org-1',
+        roles: [{ role: { name: 'AGENT' } }],
+      }
+      const existingAssignment = {
+        id: 'assignment-1',
+        tenantId: 'tenant-1',
+        userId: 'agent-1',
+        category: null,
+      }
+      ;(prisma.user.findUnique as jest.Mock)
+        .mockResolvedValueOnce(manager)
+        .mockResolvedValueOnce(agent)
+      ;(prisma.tenant.findUnique as jest.Mock).mockResolvedValue(tenant)
+      ;(prisma.tenantAssignment.findFirst as jest.Mock).mockResolvedValue(existingAssignment)
+
+      const result = await assignAgentToTenant('agent-1', 'tenant-1', 'manager-1')
+
+      expect(result).toEqual(existingAssignment)
+      expect(prisma.tenantAssignment.create).not.toHaveBeenCalled()
+    })
+
+    it('should allow ADMIN role to assign agents', async () => {
+      const manager = {
+        id: 'manager-1',
+        organizationId: 'org-1',
+        roles: [{ role: { name: 'ADMIN' } }],
+      }
+      const tenant = { id: 'tenant-1', organizationId: 'org-1' }
+      const agent = {
+        id: 'agent-1',
+        organizationId: 'org-1',
+        roles: [{ role: { name: 'AGENT' } }],
+      }
+      const assignment = {
+        id: 'assignment-1',
+        tenantId: 'tenant-1',
+        userId: 'agent-1',
+        category: null,
+      }
+      ;(prisma.user.findUnique as jest.Mock)
+        .mockResolvedValueOnce(manager)
+        .mockResolvedValueOnce(agent)
+      ;(prisma.tenant.findUnique as jest.Mock).mockResolvedValue(tenant)
+      ;(prisma.tenantAssignment.findFirst as jest.Mock).mockResolvedValue(null)
+      ;(prisma.tenantAssignment.create as jest.Mock).mockResolvedValue(assignment)
+
+      const result = await assignAgentToTenant('agent-1', 'tenant-1', 'manager-1')
+
+      expect(result).toEqual(assignment)
+    })
+  })
+
+  describe('unassignAgentFromTenant edge cases', () => {
+    it('should throw error if tenant not found', async () => {
+      const manager = {
+        id: 'manager-1',
+        organizationId: 'org-1',
+        roles: [{ role: { name: 'IT_MANAGER' } }],
+      }
+      ;(prisma.user.findUnique as jest.Mock).mockResolvedValue(manager)
+      ;(prisma.tenant.findUnique as jest.Mock).mockResolvedValue(null)
+
+      await expect(
+        unassignAgentFromTenant('agent-1', 'tenant-1', 'manager-1')
+      ).rejects.toThrow('Tenant not found')
+    })
+
+    it('should throw error if manager organization does not match tenant organization', async () => {
+      const manager = {
+        id: 'manager-1',
+        organizationId: 'org-1',
+        roles: [{ role: { name: 'IT_MANAGER' } }],
+      }
+      const tenant = { id: 'tenant-1', organizationId: 'org-2' }
+      ;(prisma.user.findUnique as jest.Mock).mockResolvedValue(manager)
+      ;(prisma.tenant.findUnique as jest.Mock).mockResolvedValue(tenant)
+
+      await expect(
+        unassignAgentFromTenant('agent-1', 'tenant-1', 'manager-1')
+      ).rejects.toThrow('You can only manage tenants in your organization')
+    })
+  })
+
+  describe('canManageAgentInOrganization edge cases', () => {
+    it('should return false if manager not found', async () => {
+      ;(prisma.user.findUnique as jest.Mock).mockResolvedValue(null)
+
+      const result = await canManageAgentInOrganization('manager-1', 'agent-1')
+
+      expect(result).toBe(false)
+    })
+
+    it('should return false if manager is not admin or IT manager', async () => {
+      const manager = {
+        id: 'manager-1',
+        organizationId: 'org-1',
+        roles: [{ role: { name: 'END_USER' } }],
+      }
+      ;(prisma.user.findUnique as jest.Mock).mockResolvedValue(manager)
+
+      const result = await canManageAgentInOrganization('manager-1', 'agent-1')
+
+      expect(result).toBe(false)
+    })
+
+    it('should return false if agent not found', async () => {
+      const manager = {
+        id: 'manager-1',
+        organizationId: 'org-1',
+        roles: [{ role: { name: 'IT_MANAGER' } }],
+      }
+      ;(prisma.user.findUnique as jest.Mock)
+        .mockResolvedValueOnce(manager)
+        .mockResolvedValueOnce(null)
+
+      const result = await canManageAgentInOrganization('manager-1', 'agent-1')
+
+      expect(result).toBe(false)
+    })
+
+    it('should return false if manager and agent are in different organizations', async () => {
+      const manager = {
+        id: 'manager-1',
+        organizationId: 'org-1',
+        roles: [{ role: { name: 'IT_MANAGER' } }],
+      }
+      const agent = {
+        id: 'agent-1',
+        organizationId: 'org-2',
+      }
+      ;(prisma.user.findUnique as jest.Mock)
+        .mockResolvedValueOnce(manager)
+        .mockResolvedValueOnce(agent)
+
+      const result = await canManageAgentInOrganization('manager-1', 'agent-1')
+
+      expect(result).toBe(false)
+    })
+
+    it('should return true if manager is ADMIN and same organization', async () => {
+      const manager = {
+        id: 'manager-1',
+        organizationId: 'org-1',
+        roles: [{ role: { name: 'ADMIN' } }],
+      }
+      const agent = {
+        id: 'agent-1',
+        organizationId: 'org-1',
+      }
+      ;(prisma.user.findUnique as jest.Mock)
+        .mockResolvedValueOnce(manager)
+        .mockResolvedValueOnce(agent)
+
+      const result = await canManageAgentInOrganization('manager-1', 'agent-1')
+
+      expect(result).toBe(true)
+    })
+  })
+
+  describe('updateUser edge cases', () => {
+    it('should not update password if not provided', async () => {
+      const existingUser = {
+        id: 'user-1',
+        email: 'test@example.com',
+        passwordHash: 'old-hash',
+        roles: [],
+      }
+      const updatedUser = {
+        id: 'user-1',
+        email: 'test@example.com',
+        passwordHash: 'old-hash',
+        firstName: 'Updated',
+        roles: [],
+      }
+      ;(prisma.user.findUnique as jest.Mock)
+        .mockResolvedValueOnce(existingUser)
+        .mockResolvedValueOnce(updatedUser)
+      ;(prisma.user.update as jest.Mock).mockResolvedValue(updatedUser)
+
+      await updateUser('user-1', { firstName: 'Updated' })
+
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.not.objectContaining({ passwordHash: expect.anything() }),
+        })
+      )
+    })
+
+    it('should handle custom roles in update', async () => {
+      const existingUser = {
+        id: 'user-1',
+        email: 'test@example.com',
+        roles: [],
+      }
+      const updatedUser = {
+        id: 'user-1',
+        email: 'test@example.com',
+        roles: [
+          { role: null, customRole: { name: 'Custom Role' } },
+        ],
+      }
+      ;(prisma.user.findUnique as jest.Mock)
+        .mockResolvedValueOnce(existingUser)
+        .mockResolvedValueOnce(updatedUser)
+      ;(prisma.userRole.deleteMany as jest.Mock).mockResolvedValue({})
+      ;(prisma.user.update as jest.Mock).mockResolvedValue(updatedUser)
+
+      const result = await updateUser('user-1', { roles: [RoleName.END_USER] })
+
+      expect(prisma.userRole.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 'user-1' },
+      })
+      expect(result.roles).toContain('CUSTOM:Custom Role')
+    })
+  })
+
+
   describe('deactivateUser', () => {
     it('should deactivate user', async () => {
       ;(prisma.user.findUnique as jest.Mock).mockResolvedValue({
@@ -507,6 +943,53 @@ describe('User Service', () => {
         where: { id: 'user-1' },
         data: { isActive: false },
       })
+    })
+  })
+
+  describe('getUsers edge cases', () => {
+    beforeEach(() => {
+      ;(prisma.user.findMany as jest.Mock).mockResolvedValue([])
+      ;(prisma.user.count as jest.Mock).mockResolvedValue(0)
+      ;(prisma.tenantAssignment.findMany as jest.Mock).mockResolvedValue([])
+    })
+
+    it('should intersect userIds filter with tenantId filter when both provided', async () => {
+      const tenantAssignments = [
+        { userId: 'user-1' },
+        { userId: 'user-2' },
+        { userId: 'user-3' },
+      ]
+      ;(prisma.tenantAssignment.findMany as jest.Mock).mockResolvedValue(tenantAssignments)
+
+      await getUsers({
+        tenantId: 'tenant-1',
+        userIds: ['user-2', 'user-3', 'user-4'], // user-4 is not in tenant
+      })
+
+      const callArgs = (prisma.user.findMany as jest.Mock).mock.calls[0][0]
+      // Should intersect: only user-2 and user-3 should be in the filter
+      expect(callArgs.where.id.in).toEqual(['user-2', 'user-3'])
+    })
+
+    it('should handle userIds filter without tenantId filter', async () => {
+      await getUsers({
+        userIds: ['user-1', 'user-2'],
+      })
+
+      const callArgs = (prisma.user.findMany as jest.Mock).mock.calls[0][0]
+      expect(callArgs.where.id.in).toEqual(['user-1', 'user-2'])
+    })
+
+    it('should return empty when userIds filter intersects with empty tenant assignments', async () => {
+      ;(prisma.tenantAssignment.findMany as jest.Mock).mockResolvedValue([])
+
+      const result = await getUsers({
+        tenantId: 'tenant-1',
+        userIds: ['user-1', 'user-2'],
+      })
+
+      expect(result.users).toEqual([])
+      expect(result.pagination.total).toBe(0)
     })
   })
 })

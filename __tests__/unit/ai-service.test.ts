@@ -19,6 +19,10 @@ describe('AI Service', () => {
   })
 
   describe('chatWithTools', () => {
+    beforeEach(() => {
+      jest.clearAllMocks()
+    })
+
     it('should return direct response when no tool calls', async () => {
       const mockResponse = {
         choices: [
@@ -447,6 +451,86 @@ describe('AI Service', () => {
       })
 
       expect(result.reply).toBe('')
+    })
+
+    it('should handle invalid JSON in tool arguments', async () => {
+      const mockResponse = {
+        choices: [
+          {
+            message: {
+              role: 'assistant',
+              content: null,
+              tool_calls: [
+                {
+                  id: 'call-1',
+                  type: 'function',
+                  function: {
+                    name: 'search_knowledge_base',
+                    arguments: 'invalid json{',
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      }
+
+      const mockFinalResponse = {
+        choices: [
+          {
+            message: {
+              role: 'assistant',
+              content: 'Error occurred',
+            },
+          },
+        ],
+      }
+
+      ;(global.fetch as jest.Mock)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => mockResponse,
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => mockFinalResponse,
+        })
+
+      // The JSON.parse will throw, but chatWithTools should handle it
+      // Actually, handleToolCall uses JSON.parse which will throw
+      // So chatWithTools should catch and handle the error
+      await expect(
+        chatWithTools({
+          messages: [{ role: 'user', content: 'Test' }],
+        })
+      ).rejects.toThrow()
+    })
+
+    it('should handle network errors from Groq API', async () => {
+      ;(global.fetch as jest.Mock).mockReset()
+      ;(global.fetch as jest.Mock).mockRejectedValue(new Error('Network error'))
+
+      await expect(
+        chatWithTools({
+          messages: [{ role: 'user', content: 'Hello' }],
+        })
+      ).rejects.toThrow('Network error')
+    })
+
+    it('should handle invalid JSON response from Groq API', async () => {
+      ;(global.fetch as jest.Mock).mockReset()
+      ;(global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: async () => {
+          throw new Error('Invalid JSON')
+        },
+      })
+
+      await expect(
+        chatWithTools({
+          messages: [{ role: 'user', content: 'Hello' }],
+        })
+      ).rejects.toThrow('Invalid JSON')
     })
   })
 })

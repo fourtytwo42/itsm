@@ -5,6 +5,7 @@ import { EmailEncryption, EmailProtocol } from '@prisma/client'
 const mockEmailConfiguration = {
   upsert: jest.fn(),
   findFirst: jest.fn(),
+  findUnique: jest.fn(),
 }
 
 const mockPrisma = {
@@ -95,9 +96,216 @@ describe('Email Service', () => {
     )
   })
 
-  it('parseEmail should call simpleParser', async () => {
+  it('sendEmail should handle transport.sendMail errors', async () => {
+    ;(prisma.emailConfiguration.findFirst as jest.Mock).mockResolvedValue(baseConfig)
+    const mockTransport = {
+      sendMail: jest.fn().mockRejectedValue(new Error('SMTP connection failed')),
+    }
+    ;(nodemailer.createTransport as jest.Mock).mockReturnValueOnce(mockTransport)
+
+    await expect(sendEmail({ to: 'to@example.com', subject: 'Hello', text: 'World' })).rejects.toThrow(
+      'SMTP connection failed'
+    )
+  })
+
+  it('parseEmail should call simpleParser with string', async () => {
     const parsed = await parseEmail('RAW')
     expect(parsed).toEqual({ subject: 'Parsed Email' })
+  })
+
+  it('parseEmail should handle Buffer input', async () => {
+    const simpleParser = require('mailparser').simpleParser
+    const buffer = Buffer.from('raw email content')
+    await parseEmail(buffer)
+    expect(simpleParser).toHaveBeenCalledWith(buffer)
+  })
+
+  it('parseEmail should handle parsing errors', async () => {
+    const simpleParser = require('mailparser').simpleParser
+    const error = new Error('Invalid email format')
+    simpleParser.mockRejectedValueOnce(error)
+
+    await expect(parseEmail('invalid')).rejects.toThrow('Invalid email format')
+  })
+
+
+  describe('upsertEmailConfig edge cases', () => {
+    it('should create organization-scoped config when organizationId provided', async () => {
+      ;(prisma.emailConfiguration.findUnique as jest.Mock).mockResolvedValue(null)
+      ;(prisma.emailConfiguration.upsert as jest.Mock).mockResolvedValue({
+        id: 'config-1',
+        organizationId: 'org-1',
+        host: 'smtp.example.com',
+      })
+
+      await upsertEmailConfig({
+        protocol: EmailProtocol.SMTP,
+        host: 'smtp.example.com',
+        port: 587,
+        username: 'user@example.com',
+        password: 'password123',
+        organizationId: 'org-1',
+      })
+
+      expect(prisma.emailConfiguration.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { organizationId: 'org-1' },
+          create: expect.objectContaining({
+            organizationId: 'org-1',
+          }),
+        })
+      )
+    })
+
+    it('should update organization-scoped config without password when password not provided', async () => {
+      const existingConfig = {
+        id: 'config-1',
+        organizationId: 'org-1',
+        password: 'existing-password',
+      }
+      ;(prisma.emailConfiguration.findUnique as jest.Mock).mockResolvedValue(existingConfig)
+      ;(prisma.emailConfiguration.upsert as jest.Mock).mockResolvedValue({
+        ...existingConfig,
+        host: 'smtp.example.com',
+      })
+
+      await upsertEmailConfig({
+        protocol: EmailProtocol.SMTP,
+        host: 'smtp.example.com',
+        port: 587,
+        username: 'user@example.com',
+        organizationId: 'org-1',
+      })
+
+      expect(prisma.emailConfiguration.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          update: expect.not.objectContaining({
+            password: expect.anything(),
+          }),
+        })
+      )
+    })
+
+    it('should throw error when creating new org config without password', async () => {
+      ;(prisma.emailConfiguration.findUnique as jest.Mock).mockResolvedValue(null)
+
+      await expect(
+        upsertEmailConfig({
+          protocol: EmailProtocol.SMTP,
+          host: 'smtp.example.com',
+          port: 587,
+          username: 'user@example.com',
+          organizationId: 'org-1',
+        })
+      ).rejects.toThrow('Password is required when creating new email configuration')
+    })
+
+    it('should handle different encryption types', async () => {
+      ;(prisma.emailConfiguration.upsert as jest.Mock).mockResolvedValue({
+        id: 'config-1',
+        encryption: EmailEncryption.TLS,
+      })
+
+      await upsertEmailConfig({
+        protocol: EmailProtocol.SMTP,
+        host: 'smtp.example.com',
+        port: 587,
+        username: 'user@example.com',
+        password: 'password123',
+        encryption: EmailEncryption.TLS,
+      })
+
+      expect(prisma.emailConfiguration.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({
+            encryption: EmailEncryption.TLS,
+          }),
+        })
+      )
+    })
+  })
+
+  describe('getEmailConfig edge cases', () => {
+    it('should return organization-specific config when organizationId provided', async () => {
+      const mockConfig = { id: 'config-1', organizationId: 'org-1' }
+      ;(prisma.emailConfiguration.findUnique as jest.Mock).mockResolvedValue(mockConfig)
+
+      const result = await getEmailConfig('org-1')
+
+      expect(prisma.emailConfiguration.findUnique).toHaveBeenCalledWith({
+        where: { organizationId: 'org-1' },
+      })
+      expect(result).toEqual(mockConfig)
+    })
+
+    it('should return first config found when organizationId not provided', async () => {
+      const mockConfig = { id: 'config-1' }
+      ;(prisma.emailConfiguration.findFirst as jest.Mock).mockResolvedValue(mockConfig)
+
+      const result = await getEmailConfig()
+
+      expect(prisma.emailConfiguration.findFirst).toHaveBeenCalled()
+      expect(result).toEqual(mockConfig)
+    })
+  })
+
+  describe('buildSmtpTransport edge cases', () => {
+    it('should configure secure connection for SSL encryption', () => {
+      const config = {
+        host: 'smtp.example.com',
+        port: 465,
+        username: 'user@example.com',
+        password: 'password',
+        encryption: EmailEncryption.SSL,
+      }
+
+      const transport = buildSmtpTransport(config as any)
+
+      expect(transport).toBeDefined()
+      expect(nodemailer.createTransport).toHaveBeenCalledWith(
+        expect.objectContaining({
+          secure: true,
+        })
+      )
+    })
+
+    it('should configure non-secure connection for NONE encryption', () => {
+      const config = {
+        host: 'smtp.example.com',
+        port: 25,
+        username: 'user@example.com',
+        password: 'password',
+        encryption: EmailEncryption.NONE,
+      }
+
+      const transport = buildSmtpTransport(config as any)
+
+      expect(transport).toBeDefined()
+      expect(nodemailer.createTransport).toHaveBeenCalledWith(
+        expect.objectContaining({
+          secure: false,
+        })
+      )
+    })
+
+    it('should configure TLS with ciphers for TLS encryption', () => {
+      const config = {
+        host: 'smtp.example.com',
+        port: 587,
+        username: 'user@example.com',
+        password: 'password',
+        encryption: EmailEncryption.TLS,
+      }
+
+      const transport = buildSmtpTransport(config as any)
+
+      expect(transport).toBeDefined()
+      expect(nodemailer.createTransport).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tls: { ciphers: 'TLSv1.2' },
+        })
+      )
+    })
   })
 })
 

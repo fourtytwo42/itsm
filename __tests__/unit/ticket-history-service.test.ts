@@ -100,6 +100,73 @@ describe('Ticket History Service', () => {
     })
   })
 
+  describe('createTicketHistory edge cases', () => {
+    it('should handle null values for optional fields', async () => {
+      const mockHistory = {
+        id: '1',
+        ticketId: 'ticket-1',
+        type: TicketHistoryType.STATUS_CHANGE,
+        userId: 'user-1',
+        oldValue: null,
+        newValue: null,
+        note: null,
+        metadata: null,
+        user: { id: 'user-1', email: 'user@example.com', firstName: 'User', lastName: 'Name' },
+      }
+      ;(prisma.ticketHistory.create as jest.Mock).mockResolvedValue(mockHistory)
+
+      const result = await createTicketHistory({
+        ticketId: 'ticket-1',
+        type: TicketHistoryType.STATUS_CHANGE,
+        userId: 'user-1',
+        oldValue: null,
+        newValue: null,
+        note: null,
+        metadata: null,
+      })
+
+      expect(prisma.ticketHistory.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            oldValue: null,
+            newValue: null,
+            note: null,
+            metadata: null,
+          }),
+        })
+      )
+      expect(result).toEqual(mockHistory)
+    })
+
+    it('should handle metadata as object', async () => {
+      const mockHistory = {
+        id: '1',
+        ticketId: 'ticket-1',
+        type: TicketHistoryType.COMMENT,
+        userId: 'user-1',
+        metadata: { commentId: 'comment-1' },
+        user: { id: 'user-1', email: 'user@example.com', firstName: 'User', lastName: 'Name' },
+      }
+      ;(prisma.ticketHistory.create as jest.Mock).mockResolvedValue(mockHistory)
+
+      const result = await createTicketHistory({
+        ticketId: 'ticket-1',
+        type: TicketHistoryType.COMMENT,
+        userId: 'user-1',
+        metadata: { commentId: 'comment-1' },
+      })
+
+      expect(prisma.ticketHistory.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            metadata: { commentId: 'comment-1' },
+          }),
+        })
+      )
+      expect(result).toEqual(mockHistory)
+    })
+  })
+
   describe('getTicketHistory', () => {
     it('should return ticket history ordered by date', async () => {
       const mockHistory = [

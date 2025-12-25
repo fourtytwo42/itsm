@@ -407,6 +407,54 @@ describe('Analytics Service', () => {
         })
       )
     })
+
+    it('should handle empty results', async () => {
+      ;(prisma.ticket.findMany as jest.Mock).mockResolvedValue([])
+
+      const result = await getTicketVolumeByDay()
+
+      expect(result).toEqual([])
+    })
+
+    it('should sort results by date', async () => {
+      const mockTickets = [
+        { createdAt: new Date('2025-01-03T10:00:00Z') },
+        { createdAt: new Date('2025-01-01T10:00:00Z') },
+        { createdAt: new Date('2025-01-02T10:00:00Z') },
+      ]
+
+      ;(prisma.ticket.findMany as jest.Mock).mockResolvedValue(mockTickets)
+
+      const result = await getTicketVolumeByDay()
+
+      expect(result[0].date).toBe('2025-01-01')
+      expect(result[1].date).toBe('2025-01-02')
+      expect(result[2].date).toBe('2025-01-03'      )
+    })
+
+    it('should handle empty results', async () => {
+      ;(prisma.ticket.findMany as jest.Mock).mockResolvedValue([])
+
+      const result = await getTicketVolumeByDay()
+
+      expect(result).toEqual([])
+    })
+
+    it('should sort results by date', async () => {
+      const mockTickets = [
+        { createdAt: new Date('2025-01-03T10:00:00Z') },
+        { createdAt: new Date('2025-01-01T10:00:00Z') },
+        { createdAt: new Date('2025-01-02T10:00:00Z') },
+      ]
+
+      ;(prisma.ticket.findMany as jest.Mock).mockResolvedValue(mockTickets)
+
+      const result = await getTicketVolumeByDay()
+
+      expect(result[0].date).toBe('2025-01-01')
+      expect(result[1].date).toBe('2025-01-02')
+      expect(result[2].date).toBe('2025-01-03')
+    })
   })
 
   describe('exportAnalyticsToCSV', () => {
@@ -810,6 +858,10 @@ describe('Analytics Service', () => {
         },
         {
           createdAt: new Date('2025-01-01T10:00:00Z'),
+          closedAt: null, // No closedAt - should be skipped
+        },
+        {
+          createdAt: new Date('2025-01-01T10:00:00Z'),
           closedAt: new Date('2025-01-01T12:00:00Z'), // 120 minutes
         },
       ]
@@ -818,7 +870,153 @@ describe('Analytics Service', () => {
 
       const result = await calculateMTTR()
 
-      expect(result).toBe(90) // (60 + 120) / 2
+      // Should only count tickets with closedAt: (60 + 120) / 2 = 90
+      expect(result).toBe(90)
+    })
+  })
+
+  describe('getDashboardMetrics edge cases - organization filtering', () => {
+    it('should return empty metrics when user has no organization', async () => {
+      ;(prisma.user.findUnique as jest.Mock).mockResolvedValue({ organizationId: null })
+
+      const result = await getDashboardMetrics({ userId: 'user-1', userRoles: ['END_USER'] })
+
+      expect(result).toEqual({
+        totalTickets: 0,
+        openTickets: 0,
+        resolvedTickets: 0,
+        closedTickets: 0,
+        averageResolutionTime: 0,
+        ticketsByPriority: {},
+        ticketsByStatus: {},
+      })
+      expect(prisma.ticket.count).not.toHaveBeenCalled()
+    })
+
+    it('should filter by user organization when not GLOBAL_ADMIN', async () => {
+      ;(prisma.user.findUnique as jest.Mock).mockResolvedValue({ organizationId: 'org-1' })
+      ;(prisma.ticket.count as jest.Mock).mockResolvedValue(0)
+      ;(prisma.ticket.groupBy as jest.Mock).mockResolvedValue([])
+      ;(prisma.ticket.findMany as jest.Mock).mockResolvedValue([])
+
+      await getDashboardMetrics({ userId: 'user-1', userRoles: ['END_USER'] })
+
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        select: { organizationId: true },
+      })
+      expect(prisma.ticket.count).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            organizationId: 'org-1',
+          }),
+        })
+      )
+    })
+
+    it('should not filter by organization for GLOBAL_ADMIN', async () => {
+      ;(prisma.ticket.count as jest.Mock).mockResolvedValue(0)
+      ;(prisma.ticket.groupBy as jest.Mock).mockResolvedValue([])
+      ;(prisma.ticket.findMany as jest.Mock).mockResolvedValue([])
+
+      await getDashboardMetrics({ userId: 'admin-1', userRoles: ['GLOBAL_ADMIN'] })
+
+      expect(prisma.user.findUnique).not.toHaveBeenCalled()
+      expect(prisma.ticket.count).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.not.objectContaining({
+            organizationId: expect.anything(),
+          }),
+        })
+      )
+    })
+
+    it('should handle organizationId filter directly', async () => {
+      ;(prisma.ticket.count as jest.Mock).mockResolvedValue(0)
+      ;(prisma.ticket.groupBy as jest.Mock).mockResolvedValue([])
+      ;(prisma.ticket.findMany as jest.Mock).mockResolvedValue([])
+
+      await getDashboardMetrics({ organizationId: 'org-1' })
+
+      expect(prisma.ticket.count).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            organizationId: 'org-1',
+          }),
+        })
+      )
+    })
+  })
+
+  describe('getAgentPerformance edge cases - organization filtering', () => {
+    it('should filter by user organization when not GLOBAL_ADMIN', async () => {
+      ;(prisma.user.findUnique as jest.Mock).mockResolvedValue({ organizationId: 'org-1' })
+      ;(prisma.ticket.findMany as jest.Mock).mockResolvedValue([])
+
+      await getAgentPerformance({ userId: 'user-1', userRoles: ['END_USER'] })
+
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        select: { organizationId: true },
+      })
+      expect(prisma.ticket.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            organizationId: 'org-1',
+          }),
+        })
+      )
+    })
+
+    it('should not filter by organization for GLOBAL_ADMIN', async () => {
+      ;(prisma.ticket.findMany as jest.Mock).mockResolvedValue([])
+
+      await getAgentPerformance({ userId: 'admin-1', userRoles: ['GLOBAL_ADMIN'] })
+
+      expect(prisma.user.findUnique).not.toHaveBeenCalled()
+      expect(prisma.ticket.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.not.objectContaining({
+            organizationId: expect.anything(),
+          }),
+        })
+      )
+    })
+  })
+
+  describe('calculateMTTR edge cases - organization filtering', () => {
+    it('should filter by user organization when not GLOBAL_ADMIN', async () => {
+      ;(prisma.user.findUnique as jest.Mock).mockResolvedValue({ organizationId: 'org-1' })
+      ;(prisma.ticket.findMany as jest.Mock).mockResolvedValue([])
+
+      await calculateMTTR({ userId: 'user-1', userRoles: ['END_USER'] })
+
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        select: { organizationId: true },
+      })
+      expect(prisma.ticket.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            organizationId: 'org-1',
+          }),
+        })
+      )
+    })
+
+    it('should not filter by organization for GLOBAL_ADMIN', async () => {
+      ;(prisma.ticket.findMany as jest.Mock).mockResolvedValue([])
+
+      await calculateMTTR({ userId: 'admin-1', userRoles: ['GLOBAL_ADMIN'] })
+
+      expect(prisma.user.findUnique).not.toHaveBeenCalled()
+      expect(prisma.ticket.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.not.objectContaining({
+            organizationId: expect.anything(),
+          }),
+        })
+      )
     })
   })
 })

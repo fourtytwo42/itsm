@@ -103,6 +103,38 @@ describe('Config Service', () => {
       expect(config.maxFileSize).toBe(52428800)
       expect(config.registrationEnabled).toBe(true) // Default value
     })
+
+    it('should ignore settings not in DEFAULT_CONFIG', async () => {
+      const mockSettings = [
+        {
+          id: '1',
+          key: 'organizationName',
+          category: SettingCategory.BRANDING,
+          value: 'My Company',
+          description: null,
+          updatedBy: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        {
+          id: '2',
+          key: 'unknownSetting',
+          category: SettingCategory.SYSTEM,
+          value: 'should be ignored',
+          description: null,
+          updatedBy: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ]
+
+      ;(prisma.systemSetting.findMany as jest.Mock).mockResolvedValue(mockSettings)
+
+      const config = await getSystemConfig()
+
+      expect(config).not.toHaveProperty('unknownSetting')
+      expect(config.organizationName).toBe('My Company')
+    })
   })
 
   describe('getSetting', () => {
@@ -295,6 +327,14 @@ describe('Config Service', () => {
       })
       expect(settings).toHaveLength(1)
     })
+
+    it('should return empty array when no settings in category', async () => {
+      ;(prisma.systemSetting.findMany as jest.Mock).mockResolvedValue([])
+
+      const settings = await getSettingsByCategory(SettingCategory.BRANDING)
+
+      expect(settings).toEqual([])
+    })
   })
 
   describe('deleteSetting', () => {
@@ -347,6 +387,37 @@ describe('Config Service', () => {
         type: 'text',
         required: false,
       })
+    })
+
+    it('should include inactive fields when includeInactive is true', async () => {
+      const mockFields = [
+        {
+          id: '1',
+          name: 'custom_field_1',
+          label: 'Custom Field 1',
+          type: 'text',
+          required: false,
+          defaultValue: null,
+          options: null,
+          entityType: 'ticket',
+          order: 0,
+          active: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ]
+
+      ;(prisma.customField.findMany as jest.Mock).mockResolvedValue(mockFields)
+
+      const fields = await getCustomFields('ticket', true)
+
+      expect(prisma.customField.findMany).toHaveBeenCalledWith({
+        where: {
+          entityType: 'ticket',
+        },
+        orderBy: { order: 'asc' },
+      })
+      expect(fields).toHaveLength(1)
     })
   })
 
@@ -474,6 +545,31 @@ describe('Config Service', () => {
         icon: 'bug',
         color: '#ef4444',
       })
+    })
+
+    it('should include inactive ticket types when includeInactive is true', async () => {
+      const mockTypes = [
+        {
+          id: '1',
+          name: 'Incident',
+          description: 'Incident ticket type',
+          icon: 'bug',
+          color: '#ef4444',
+          active: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ]
+
+      ;(prisma.ticketType.findMany as jest.Mock).mockResolvedValue(mockTypes)
+
+      const types = await getTicketTypes(true)
+
+      expect(prisma.ticketType.findMany).toHaveBeenCalledWith({
+        where: {},
+        orderBy: { name: 'asc' },
+      })
+      expect(types).toHaveLength(1)
     })
   })
 

@@ -145,6 +145,30 @@ describe('Tenant Service', () => {
         })
       ).rejects.toThrow('Slug must contain only lowercase letters')
     })
+
+    it('should throw error if slug exists for different tenant', async () => {
+      ;(prisma.tenant.findUnique as jest.Mock).mockResolvedValue({ id: 'tenant-2' })
+
+      await expect(
+        updateTenant('tenant-1', {
+          slug: 'existing-slug',
+        })
+      ).rejects.toThrow('already exists')
+    })
+
+    it('should allow updating to same slug', async () => {
+      ;(prisma.tenant.findUnique as jest.Mock).mockResolvedValue({ id: 'tenant-1' })
+      ;(prisma.tenant.update as jest.Mock).mockResolvedValue({
+        id: 'tenant-1',
+        slug: 'existing-slug',
+      })
+
+      await updateTenant('tenant-1', {
+        slug: 'existing-slug',
+      })
+
+      expect(prisma.tenant.update).toHaveBeenCalled()
+    })
   })
 
   describe('getTenantBySlug', () => {
@@ -217,6 +241,89 @@ describe('Tenant Service', () => {
         })
       )
     })
+
+    it('should return empty array when user has no organization', async () => {
+      ;(prisma.user.findUnique as jest.Mock).mockResolvedValue({
+        id: 'user-1',
+        organizationId: null,
+      })
+
+      const result = await listTenants({
+        userId: 'user-1',
+        userRoles: ['ADMIN'],
+      })
+
+      expect(result).toEqual([])
+      expect(prisma.tenant.findMany).not.toHaveBeenCalled()
+    })
+
+    it('should not filter by organization for GLOBAL_ADMIN', async () => {
+      ;(prisma.tenant.findMany as jest.Mock).mockResolvedValue([])
+
+      await listTenants({
+        userId: 'user-1',
+        userRoles: ['GLOBAL_ADMIN'],
+      })
+
+      expect(prisma.user.findUnique).not.toHaveBeenCalled()
+      expect(prisma.tenant.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.not.objectContaining({ organizationId: expect.anything() }),
+        })
+      )
+    })
+
+    it('should filter by search term', async () => {
+      ;(prisma.tenant.findMany as jest.Mock).mockResolvedValue([])
+
+      await listTenants({
+        search: 'test',
+      })
+
+      expect(prisma.tenant.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            OR: [
+              { name: { contains: 'test', mode: 'insensitive' } },
+              { slug: { contains: 'test', mode: 'insensitive' } },
+              { description: { contains: 'test', mode: 'insensitive' } },
+            ],
+          }),
+        })
+      )
+    })
+
+    it('should filter by isActive', async () => {
+      ;(prisma.tenant.findMany as jest.Mock).mockResolvedValue([])
+
+      await listTenants({
+        isActive: true,
+      })
+
+      expect(prisma.tenant.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            isActive: true,
+          }),
+        })
+      )
+    })
+
+    it('should filter by organizationId directly', async () => {
+      ;(prisma.tenant.findMany as jest.Mock).mockResolvedValue([])
+
+      await listTenants({
+        organizationId: 'org-1',
+      })
+
+      expect(prisma.tenant.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            organizationId: 'org-1',
+          }),
+        })
+      )
+    })
   })
 
   describe('deleteTenant', () => {
@@ -253,6 +360,17 @@ describe('Tenant Service', () => {
       expect(prisma.tenantCategory.deleteMany).toHaveBeenCalled()
       expect(prisma.tenantCategory.createMany).toHaveBeenCalled()
     })
+
+    it('should handle empty categories array', async () => {
+      ;(prisma.tenantCategory.deleteMany as jest.Mock).mockResolvedValue({ count: 0 })
+      ;(prisma.tenantCategory.findMany as jest.Mock).mockResolvedValue([])
+
+      const result = await manageTenantCategories('tenant-1', [])
+
+      expect(result).toEqual([])
+      expect(prisma.tenantCategory.deleteMany).toHaveBeenCalled()
+      expect(prisma.tenantCategory.createMany).not.toHaveBeenCalled()
+    })
   })
 
   describe('manageTenantKBArticles', () => {
@@ -276,6 +394,17 @@ describe('Tenant Service', () => {
       expect(prisma.tenantKBArticle.deleteMany).toHaveBeenCalled()
       expect(prisma.tenantKBArticle.createMany).toHaveBeenCalled()
     })
+
+    it('should handle empty articleIds array', async () => {
+      ;(prisma.tenantKBArticle.deleteMany as jest.Mock).mockResolvedValue({ count: 0 })
+      ;(prisma.tenantKBArticle.findMany as jest.Mock).mockResolvedValue([])
+
+      const result = await manageTenantKBArticles('tenant-1', [])
+
+      expect(result).toEqual([])
+      expect(prisma.tenantKBArticle.deleteMany).toHaveBeenCalled()
+      expect(prisma.tenantKBArticle.createMany).not.toHaveBeenCalled()
+    })
   })
 
   describe('createCustomField', () => {
@@ -296,6 +425,33 @@ describe('Tenant Service', () => {
 
       expect(result).toEqual(mockField)
       expect(prisma.tenantCustomField.create).toHaveBeenCalled()
+    })
+
+    it('should use default values for optional fields', async () => {
+      const mockField = {
+        id: 'field-1',
+        label: 'Serial Number',
+        fieldType: CustomFieldType.TEXT,
+        required: false,
+        options: [],
+        order: 0,
+      }
+
+      ;(prisma.tenantCustomField.create as jest.Mock).mockResolvedValue(mockField)
+
+      await createCustomField({
+        tenantId: 'tenant-1',
+        label: 'Serial Number',
+        fieldType: CustomFieldType.TEXT,
+      })
+
+      expect(prisma.tenantCustomField.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          required: false,
+          options: [],
+          order: 0,
+        }),
+      })
     })
   })
 
@@ -410,6 +566,43 @@ describe('Tenant Service', () => {
 
       expect(result).toBeInstanceOf(Map)
     })
+
+    it('should return empty map when user has no assignments', async () => {
+      ;(prisma.tenantAssignment.findMany as jest.Mock).mockResolvedValue([])
+
+      const result = await getUserAssignedCategories('user-1')
+
+      expect(result).toBeInstanceOf(Map)
+      expect(result.size).toBe(0)
+    })
+
+    it('should handle multiple tenants with different assignments', async () => {
+      const mockAssignments = [
+        {
+          tenantId: 'tenant-1',
+          category: 'cat-1',
+          tenant: { id: 'tenant-1', name: 'Tenant 1' },
+        },
+        {
+          tenantId: 'tenant-2',
+          category: null,
+          tenant: { id: 'tenant-2', name: 'Tenant 2' },
+        },
+      ]
+
+      ;(prisma.tenantAssignment.findMany as jest.Mock).mockResolvedValue(mockAssignments)
+      ;(prisma.tenantCategory.findMany as jest.Mock)
+        .mockResolvedValueOnce([
+          { id: 'tc-1', tenantId: 'tenant-2', category: 'cat-2' },
+          { id: 'tc-2', tenantId: 'tenant-2', category: 'cat-3' },
+        ])
+
+      const result = await getUserAssignedCategories('user-1')
+
+      expect(result.size).toBe(2)
+      expect(result.has('tenant-1')).toBe(true)
+      expect(result.has('tenant-2')).toBe(true)
+    })
   })
 
   describe('canManageTenant', () => {
@@ -477,6 +670,35 @@ describe('Tenant Service', () => {
 
       ;(prisma.user.findUnique as jest.Mock).mockResolvedValue(mockUser)
       ;(prisma.tenant.findUnique as jest.Mock).mockResolvedValue(mockTenant)
+
+      const result = await canManageTenant('user-1', 'tenant-1')
+
+      expect(result).toBe(false)
+    })
+
+    it('should return false when user not found', async () => {
+      ;(prisma.user.findUnique as jest.Mock).mockResolvedValue(null)
+
+      const result = await canManageTenant('user-1', 'tenant-1')
+
+      expect(result).toBe(false)
+    })
+
+    it('should return false when tenant not found', async () => {
+      const mockUser = {
+        id: 'user-1',
+        organizationId: 'org-1',
+        roles: [
+          {
+            role: {
+              name: 'ADMIN',
+            },
+          },
+        ],
+      }
+
+      ;(prisma.user.findUnique as jest.Mock).mockResolvedValue(mockUser)
+      ;(prisma.tenant.findUnique as jest.Mock).mockResolvedValue(null)
 
       const result = await canManageTenant('user-1', 'tenant-1')
 

@@ -221,6 +221,40 @@ describe('Custom Role Service', () => {
       expect(result.some((r) => r.type === 'system')).toBe(true)
       expect(result.some((r) => r.type === 'custom')).toBe(true)
     })
+
+    it('should return only system roles when organization has no custom roles', async () => {
+      ;(prisma.customRole.findMany as jest.Mock).mockResolvedValue([])
+
+      const result = await getAvailableRolesForEscalation('org-1')
+
+      expect(result.length).toBe(2) // AGENT and IT_MANAGER
+      expect(result.every((r) => r.type === 'system')).toBe(true)
+      expect(result.some((r) => r.id === RoleName.AGENT)).toBe(true)
+      expect(result.some((r) => r.id === RoleName.IT_MANAGER)).toBe(true)
+    })
+
+    it('should combine system and custom roles correctly', async () => {
+      ;(prisma.customRole.findMany as jest.Mock).mockResolvedValue([
+        {
+          id: 'custom-1',
+          name: 'support-lead',
+          displayName: 'Support Lead',
+        },
+        {
+          id: 'custom-2',
+          name: 'senior-agent',
+          displayName: 'Senior Agent',
+        },
+      ])
+
+      const result = await getAvailableRolesForEscalation('org-1')
+
+      expect(result.length).toBe(4) // 2 system + 2 custom
+      expect(result.filter((r) => r.type === 'system').length).toBe(2)
+      expect(result.filter((r) => r.type === 'custom').length).toBe(2)
+      expect(result.find((r) => r.displayName === 'Support Lead')).toBeDefined()
+      expect(result.find((r) => r.displayName === 'Senior Agent')).toBeDefined()
+    })
   })
 
   describe('getAvailableUsersForEscalation', () => {
@@ -236,9 +270,11 @@ describe('Custom Role Service', () => {
               role: {
                 name: RoleName.AGENT,
               },
+              customRole: null,
             },
           ],
           tenantAssignments: [],
+          tenantId: null,
         },
       ]
 
@@ -246,16 +282,225 @@ describe('Custom Role Service', () => {
 
       const result = await getAvailableUsersForEscalation('org-1')
 
-      expect(result.length).toBeGreaterThan(0)
+      expect(result.length).toBe(1)
+      expect(result[0].email).toBe('agent@example.com')
+      expect(result[0].roles).toContain('AGENT')
+      expect(result[0].displayName).toBe('Agent Name')
       expect(prisma.user.findMany).toHaveBeenCalled()
     })
 
     it('should filter by tenant if provided', async () => {
-      ;(prisma.user.findMany as jest.Mock).mockResolvedValue([])
+      const mockUsers = [
+        {
+          id: 'user-1',
+          email: 'agent@example.com',
+          firstName: 'Agent',
+          lastName: 'Name',
+          roles: [
+            {
+              role: {
+                name: RoleName.AGENT,
+              },
+              customRole: null,
+            },
+          ],
+          tenantAssignments: [{ tenantId: 'tenant-1', category: null }],
+          tenantId: null,
+        },
+      ]
 
-      await getAvailableUsersForEscalation('org-1', 'tenant-1')
+      ;(prisma.user.findMany as jest.Mock).mockResolvedValue(mockUsers)
 
-      expect(prisma.user.findMany).toHaveBeenCalled()
+      const result = await getAvailableUsersForEscalation('org-1', 'tenant-1')
+
+      expect(result.length).toBe(1)
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          include: expect.objectContaining({
+            tenantAssignments: expect.objectContaining({
+              where: { tenantId: 'tenant-1', category: null },
+            }),
+          }),
+        })
+      )
+    })
+
+    it('should filter out ADMIN and END_USER roles (Prisma query handles filtering)', async () => {
+      // Prisma's NOT clause filters at query level, so only eligible users are returned
+      const mockUsers = [
+        {
+          id: 'user-1',
+          email: 'agent@example.com',
+          firstName: 'Agent',
+          lastName: 'Name',
+          roles: [
+            {
+              role: {
+                name: RoleName.AGENT,
+              },
+              customRole: null,
+            },
+          ],
+          tenantAssignments: [],
+          tenantId: null,
+        },
+      ]
+
+      ;(prisma.user.findMany as jest.Mock).mockResolvedValue(mockUsers)
+
+      const result = await getAvailableUsersForEscalation('org-1')
+
+      // Prisma query excludes ADMIN/END_USER, so only AGENT is returned
+      expect(result.length).toBe(1)
+      expect(result[0].email).toBe('agent@example.com')
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            NOT: expect.objectContaining({
+              roles: expect.any(Object),
+            }),
+          }),
+        })
+      )
+    })
+
+    it('should include users with only custom roles', async () => {
+      const mockUsers = [
+        {
+          id: 'user-1',
+          email: 'custom@example.com',
+          firstName: 'Custom',
+          lastName: 'User',
+          roles: [
+            {
+              role: null,
+              customRole: {
+                name: 'support-lead',
+                displayName: 'Support Lead',
+              },
+            },
+          ],
+          tenantAssignments: [],
+          tenantId: null,
+        },
+      ]
+
+      ;(prisma.user.findMany as jest.Mock).mockResolvedValue(mockUsers)
+
+      const result = await getAvailableUsersForEscalation('org-1')
+
+      expect(result.length).toBe(1)
+      expect(result[0].roles).toContain('CUSTOM:support-lead')
+      expect(result[0].primaryRole).toBe('Support Lead')
+    })
+
+    it('should include users with mixed system and custom roles', async () => {
+      const mockUsers = [
+        {
+          id: 'user-1',
+          email: 'mixed@example.com',
+          firstName: 'Mixed',
+          lastName: 'User',
+          roles: [
+            {
+              role: {
+                name: RoleName.AGENT,
+              },
+              customRole: null,
+            },
+            {
+              role: null,
+              customRole: {
+                name: 'senior-agent',
+                displayName: 'Senior Agent',
+              },
+            },
+          ],
+          tenantAssignments: [],
+          tenantId: null,
+        },
+      ]
+
+      ;(prisma.user.findMany as jest.Mock).mockResolvedValue(mockUsers)
+
+      const result = await getAvailableUsersForEscalation('org-1')
+
+      expect(result.length).toBe(1)
+      expect(result[0].roles).toContain('AGENT')
+      expect(result[0].roles).toContain('CUSTOM:senior-agent')
+      expect(result[0].primaryRole).toBe('AGENT') // System role takes precedence
+    })
+
+    it('should use email as displayName when firstName/lastName not available', async () => {
+      const mockUsers = [
+        {
+          id: 'user-1',
+          email: 'agent@example.com',
+          firstName: null,
+          lastName: null,
+          roles: [
+            {
+              role: {
+                name: RoleName.AGENT,
+              },
+              customRole: null,
+            },
+          ],
+          tenantAssignments: [],
+          tenantId: null,
+        },
+      ]
+
+      ;(prisma.user.findMany as jest.Mock).mockResolvedValue(mockUsers)
+
+      const result = await getAvailableUsersForEscalation('org-1')
+
+      expect(result[0].displayName).toBe('agent@example.com')
+    })
+
+    it('should filter users by tenant assignment when tenantId provided', async () => {
+      const mockUsers = [
+        {
+          id: 'user-1',
+          email: 'assigned@example.com',
+          firstName: 'Assigned',
+          lastName: 'User',
+          roles: [
+            {
+              role: {
+                name: RoleName.AGENT,
+              },
+              customRole: null,
+            },
+          ],
+          tenantAssignments: [{ tenantId: 'tenant-1', category: null }],
+          tenantId: null,
+        },
+        {
+          id: 'user-2',
+          email: 'not-assigned@example.com',
+          firstName: 'Not',
+          lastName: 'Assigned',
+          roles: [
+            {
+              role: {
+                name: RoleName.AGENT,
+              },
+              customRole: null,
+            },
+          ],
+          tenantAssignments: [],
+          tenantId: 'tenant-2', // Different tenant
+        },
+      ]
+
+      ;(prisma.user.findMany as jest.Mock).mockResolvedValue(mockUsers)
+
+      const result = await getAvailableUsersForEscalation('org-1', 'tenant-1')
+
+      // Should only return user with tenant assignment or org-wide user
+      expect(result.length).toBe(1)
+      expect(result[0].email).toBe('assigned@example.com')
     })
   })
 })

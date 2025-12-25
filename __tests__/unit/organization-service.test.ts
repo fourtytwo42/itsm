@@ -419,5 +419,76 @@ describe('Organization Service', () => {
       expect(result).toBe(false)
     })
   })
+
+  describe('updateOrganization edge cases', () => {
+    it('should allow updating to same slug', async () => {
+      const mockOrg = {
+        id: 'org-1',
+        name: 'Updated Org',
+        slug: 'existing-slug',
+        _count: {
+          users: 5,
+          tenants: 2,
+          tickets: 10,
+        },
+      }
+
+      ;(prisma.organization.findUnique as jest.Mock).mockResolvedValue({ id: 'org-1' })
+      ;(prisma.organization.update as jest.Mock).mockResolvedValue(mockOrg)
+
+      const result = await updateOrganization('org-1', {
+        slug: 'existing-slug',
+      })
+
+      expect(result).toEqual(mockOrg)
+      expect(prisma.organization.update).toHaveBeenCalled()
+    })
+
+    it('should update without slug validation if slug not provided', async () => {
+      const mockOrg = {
+        id: 'org-1',
+        name: 'Updated Org',
+        _count: {
+          users: 5,
+          tenants: 2,
+          tickets: 10,
+        },
+      }
+
+      ;(prisma.organization.update as jest.Mock).mockResolvedValue(mockOrg)
+
+      await updateOrganization('org-1', {
+        name: 'Updated Org',
+      })
+
+      expect(prisma.organization.findUnique).not.toHaveBeenCalled()
+      expect(prisma.organization.update).toHaveBeenCalled()
+    })
+  })
+
+  describe('listOrganizations edge cases', () => {
+    it('should handle both search and isActive filters together', async () => {
+      ;(prisma.organization.findMany as jest.Mock).mockResolvedValue([])
+
+      await listOrganizations({ search: 'test', isActive: true })
+
+      expect(prisma.organization.findMany).toHaveBeenCalledWith({
+        where: expect.objectContaining({
+          OR: expect.any(Array),
+          isActive: true,
+        }),
+        orderBy: { createdAt: 'desc' },
+        include: expect.any(Object),
+      })
+    })
+
+    it('should return empty array when no organizations match', async () => {
+      ;(prisma.organization.findMany as jest.Mock).mockResolvedValue([])
+
+      const result = await listOrganizations({ search: 'nonexistent' })
+
+      expect(result).toEqual([])
+    })
+  })
 })
 

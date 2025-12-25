@@ -110,6 +110,27 @@ describe('Ticket Routing Service', () => {
       expect(result).toBe('user-2')
     })
 
+    it('should handle IT_MANAGER role', async () => {
+      const mockAssignments = [
+        {
+          user: {
+            id: 'manager-1',
+            roles: [{ role: { name: 'IT_MANAGER' } }],
+          },
+        },
+      ]
+      ;(prisma.tenantAssignment.findMany as jest.Mock).mockResolvedValue(mockAssignments)
+      ;(prisma.ticket.count as jest.Mock).mockResolvedValue(0)
+
+      const result = await routeTicketByCategory({
+        ticketId: 'ticket-1',
+        tenantId: 'tenant-1',
+        category: 'Hardware',
+      })
+
+      expect(result).toBe('manager-1')
+    })
+
     it('should filter to only AGENT and IT_MANAGER roles', async () => {
       const mockAssignments = [
         {

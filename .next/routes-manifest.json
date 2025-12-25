@@ -70,6 +70,14 @@
       "namedRegex": "^/api/v1/admin/custom\\-roles/(?<nxtPid>[^/]+?)(?:/)?$"
     },
     {
+      "page": "/api/v1/admin/kb/articles/[id]/embeddings",
+      "regex": "^/api/v1/admin/kb/articles/([^/]+?)/embeddings(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/api/v1/admin/kb/articles/(?<nxtPid>[^/]+?)/embeddings(?:/)?$"
+    },
+    {
       "page": "/api/v1/admin/tenants/[id]",
       "regex": "^/api/v1/admin/tenants/([^/]+?)(?:/)?$",
       "routeKeys": {
@@ -148,6 +156,14 @@
         "nxtPid": "nxtPid"
       },
       "namedRegex": "^/api/v1/agent/users/(?<nxtPid>[^/]+?)/tenants(?:/)?$"
+    },
+    {
+      "page": "/api/v1/ai/chat/conversations/[id]",
+      "regex": "^/api/v1/ai/chat/conversations/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/api/v1/ai/chat/conversations/(?<nxtPid>[^/]+?)(?:/)?$"
     },
     {
       "page": "/api/v1/assets/[id]",
@@ -502,6 +518,12 @@
       "regex": "^/api/v1/ai/chat(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/api/v1/ai/chat(?:/)?$"
+    },
+    {
+      "page": "/api/v1/ai/chat/conversations",
+      "regex": "^/api/v1/ai/chat/conversations(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/v1/ai/chat/conversations(?:/)?$"
     },
     {
       "page": "/api/v1/analytics/agents",

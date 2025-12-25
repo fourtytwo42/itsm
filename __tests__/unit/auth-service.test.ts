@@ -104,6 +104,90 @@ describe('Auth Service Functions', () => {
 
       await expect(authenticateUser({ email, password })).rejects.toThrow('Invalid email or password')
     })
+
+    it('should throw error for user without password hash', async () => {
+      const email = 'test@example.com'
+      const password = 'password123'
+
+      const mockUser = {
+        id: 'user-123',
+        email,
+        passwordHash: null,
+        isActive: true,
+        roles: [],
+      }
+
+      ;(prisma.user.findUnique as jest.Mock).mockResolvedValue(mockUser)
+
+      await expect(authenticateUser({ email, password })).rejects.toThrow('Invalid email or password')
+    })
+
+    it('should handle custom roles', async () => {
+      const email = 'test@example.com'
+      const password = 'password123'
+      const passwordHash = await hashPassword(password)
+
+      const mockUser = {
+        id: 'user-123',
+        email,
+        passwordHash,
+        firstName: 'Test',
+        lastName: 'User',
+        isActive: true,
+        roles: [
+          {
+            role: null,
+            customRole: {
+              name: 'Support Agent',
+            },
+          },
+        ],
+      }
+
+      ;(prisma.user.findUnique as jest.Mock).mockResolvedValue(mockUser)
+      ;(prisma.user.update as jest.Mock).mockResolvedValue(mockUser)
+
+      const result = await authenticateUser({ email, password })
+
+      expect(result.user.roles).toContain('CUSTOM:Support Agent')
+    })
+
+    it('should handle multiple roles (system and custom)', async () => {
+      const email = 'test@example.com'
+      const password = 'password123'
+      const passwordHash = await hashPassword(password)
+
+      const mockUser = {
+        id: 'user-123',
+        email,
+        passwordHash,
+        firstName: 'Test',
+        lastName: 'User',
+        isActive: true,
+        roles: [
+          {
+            role: {
+              name: RoleName.AGENT,
+            },
+            customRole: null,
+          },
+          {
+            role: null,
+            customRole: {
+              name: 'Senior Agent',
+            },
+          },
+        ],
+      }
+
+      ;(prisma.user.findUnique as jest.Mock).mockResolvedValue(mockUser)
+      ;(prisma.user.update as jest.Mock).mockResolvedValue(mockUser)
+
+      const result = await authenticateUser({ email, password })
+
+      expect(result.user.roles).toContain('AGENT')
+      expect(result.user.roles).toContain('CUSTOM:Senior Agent')
+    })
   })
 
   describe('registerUser', () => {
@@ -158,6 +242,61 @@ describe('Auth Service Functions', () => {
       ;(prisma.user.findUnique as jest.Mock).mockResolvedValue(mockExistingUser)
 
       await expect(registerUser(userData)).rejects.toThrow('User with this email already exists')
+    })
+
+    it('should handle registration without firstName and lastName', async () => {
+      const userData = {
+        email: 'newuser@example.com',
+        password: 'password123',
+      }
+
+      const mockUser = {
+        id: 'user-123',
+        email: userData.email,
+        passwordHash: 'hashed',
+        firstName: null,
+        lastName: null,
+        isActive: true,
+        roles: [
+          {
+            role: {
+              name: RoleName.END_USER,
+            },
+          },
+        ],
+      }
+
+      ;(prisma.user.findUnique as jest.Mock).mockResolvedValue(null)
+      ;(prisma.user.create as jest.Mock).mockResolvedValue(mockUser)
+
+      const result = await registerUser(userData)
+
+      expect(result.user.email).toBe(userData.email)
+      expect(result.user.firstName).toBeNull()
+      expect(result.user.lastName).toBeNull()
+    })
+  })
+
+  describe('getUserById', () => {
+    it('should return user by id', async () => {
+      const mockUser = {
+        id: 'user-123',
+        email: 'test@example.com',
+        roles: [],
+        organization: null,
+      }
+
+      ;(prisma.user.findUnique as jest.Mock).mockResolvedValue(mockUser)
+
+      const { getUserById } = require('@/lib/auth')
+      const result = await getUserById('user-123')
+
+      expect(prisma.user.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'user-123' },
+        })
+      )
+      expect(result).toEqual(mockUser)
     })
   })
 })

@@ -36,3 +36,8 @@ const localStorageMock = {
 }
 global.localStorage = localStorageMock
 
+// Mock scrollIntoView
+if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = jest.fn()
+}
+

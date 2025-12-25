@@ -251,6 +251,7 @@ export async function listTenants(filters?: {
   }
 
   // Filter by organization - if user is not GLOBAL_ADMIN, filter by their organization
+  // ADMIN role users are organization-level admins, so they should see tenants in their organization
   if (filters?.userId && filters?.userRoles) {
     if (!filters.userRoles.includes('GLOBAL_ADMIN')) {
       // Get user's organization
@@ -261,7 +262,10 @@ export async function listTenants(filters?: {
       if (user?.organizationId) {
         where.organizationId = user.organizationId
       } else {
-        // User has no organization, return empty
+        // User has no organization - this might be an IT_MANAGER or ADMIN without org assignment
+        // Don't return empty, but log a warning. They might be able to see unassigned tenants.
+        console.warn(`User ${filters.userId} has no organizationId assigned but is trying to list tenants`)
+        // For now, return empty array since they can't manage tenants without an org
         return []
       }
     }

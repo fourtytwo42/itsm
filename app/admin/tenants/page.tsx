@@ -50,9 +50,12 @@ export default function TenantsPage() {
       const data = await response.json()
 
       if (data.success) {
-        setTenants(data.data)
+        // Handle both array response and object with tenants array
+        const tenantsList = Array.isArray(data.data) ? data.data : (data.data?.tenants || [])
+        setTenants(tenantsList)
       } else {
         setError(data.error?.message || 'Failed to load tenants')
+        console.error('Failed to load tenants:', data.error)
       }
     } catch (err) {
       setError('An unexpected error occurred')

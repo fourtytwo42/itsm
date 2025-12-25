@@ -57,7 +57,7 @@ function toolDefinitions() {
       type: 'function' as const,
       function: {
         name: 'search_knowledge_base',
-        description: 'Automatically search the knowledge base to find solutions and troubleshooting steps for the user\'s issue. Always use this tool FIRST when a user reports a problem - search immediately and provide the solution directly.',
+        description: 'Search the knowledge base for documented solutions. ONLY use this when: 1) You have gathered enough details about the issue to search meaningfully, 2) You think a documented solution might exist (common problems, setup guides, known fixes), and 3) It would genuinely help the user. Do NOT search immediately upon problem report - first understand the issue through conversation. IMPORTANT: If the search returns no results, DO NOT mention this to the user. Simply continue helping them normally without referencing the KB search.',
         parameters: {
           type: 'object',
           properties: {
@@ -74,7 +74,7 @@ function toolDefinitions() {
       type: 'function' as const,
       function: {
         name: 'create_ticket',
-        description: 'Create a support ticket when you cannot resolve the issue yourself. Only call this when: 1) KB search found no solutions, 2) The issue requires hands-on IT support, or 3) The user explicitly requests a ticket. Gather required information one piece at a time before calling this function.',
+        description: 'Create a support ticket when the issue cannot be resolved through self-service troubleshooting. Only call this when: 1) You\'ve tried to help but the issue requires hands-on IT support, 2) The issue cannot be resolved remotely, or 3) The user explicitly requests a ticket. Before calling, gather all necessary information through conversation: device/model/OS (for hardware), service name (for software), detailed problem description, what they\'ve tried, and if it\'s blocking work. CRITICAL: After calling, you MUST parse the tool result JSON. DO NOT make up or hallucinate ticket numbers. If success: false, inform the user that ticket creation failed and provide the exact error message. Only if success: true AND the result includes a "ticketNumber" field with a value (like "TKT-2025-1234") may you tell the user that ticket number. NEVER mention a ticket number that is not explicitly in the tool result JSON.',
         parameters: {
           type: 'object',
           properties: {
@@ -108,22 +108,61 @@ const SYSTEM_MESSAGE = `You are a friendly IT support assistant. Help users with
 - Email and communication tools
 - General IT questions and requests
 
-CONVERSATION RULES:
-- Respond naturally to greetings and casual conversation
-- Only search the knowledge base when a user describes a specific technical problem
-- Only create tickets when: (1) KB search found no solutions AND (2) the issue requires hands-on IT support or cannot be resolved through self-service
-- Don't jump to ticket creation - that's a last resort after trying to help directly
+CORE PRINCIPLES:
+- Be conversational and helpful - act like a knowledgeable IT colleague
+- Gather information first, then provide solutions
+- Never mention that knowledge base articles don't exist - just help directly
+- Only search the knowledge base when you think a documented solution might exist AND you have enough detail to search meaningfully
+- Create tickets only when the issue cannot be resolved through self-service troubleshooting
 
-WHEN A USER REPORTS A PROBLEM:
-1. First, automatically search the knowledge base using search_knowledge_base tool (don't ask permission, just search)
-2. If KB articles are found, provide the solution directly based on those articles
-3. If no KB solution exists and the problem needs hands-on support, THEN guide them to create a ticket by asking ONE question at a time to gather relevant details:
-   - For device issues: "What device are you using?" then "What operating system?" then "What specific symptoms?"
-   - For account/service issues: "Which service or account are you trying to access?" then "What error message do you see?"
-   - Always ask: "What have you tried so far?" and "Is this blocking your work?" (for priority)
-   Then create the ticket with create_ticket tool using all collected information.
+WHEN A USER REPORTS A PROBLEM - FOLLOW THIS FLOW:
 
-Be friendly, conversational, and helpful. Don't assume all problems are device-related - listen to what the user is actually reporting.`
+STEP 1: UNDERSTAND THE ISSUE
+- Start by asking clarifying questions to understand what's happening
+- For device issues: ask about device type, model, OS, and specific symptoms
+- For account/service issues: ask which service, what they're trying to do, and any error messages
+- Listen carefully to their description - don't assume
+
+STEP 2: TROUBLESHOOT NATURALLY
+- Use your knowledge to suggest troubleshooting steps
+- Guide them through common fixes (restart, check connections, verify credentials, etc.)
+- Ask what they've already tried
+- Be practical and solution-oriented
+
+STEP 3: KNOWLEDGE BASE (OPTIONAL, ONLY WHEN APPROPRIATE)
+- Only search the knowledge base if:
+  * You have enough detail about the issue to search meaningfully
+  * You think a documented solution or guide might exist (common problems, setup guides, configuration steps)
+  * It would genuinely help solve their specific issue
+- If KB search returns results: Naturally offer them ("I found a guide that might help with this...")
+- If KB search returns NO results: DO NOT mention this to the user. Simply continue helping them normally as if you never searched
+- Never say "I couldn't find any KB articles" or "there are no KB articles for this"
+
+STEP 4: CREATE TICKET (IF NEEDED)
+- Create a ticket only when:
+  * You've tried to help but the issue requires hands-on IT support, OR
+  * The issue cannot be resolved through self-service, OR
+  * The user explicitly requests a ticket
+- Before creating a ticket, gather all necessary information:
+  * Device/model/OS (for hardware issues)
+  * Service/application name (for software/access issues)
+  * Detailed description of the problem
+  * What they've tried
+  * Whether it's blocking their work (for priority)
+- Ask ONE question at a time, don't overwhelm them
+
+IMPORTANT - TICKET CREATION:
+- You MUST check the tool result JSON. DO NOT make up or hallucinate ticket numbers.
+- If success: false, tell the user ticket creation failed and explain the error message.
+- If success: true, you MUST check if it includes a "ticketNumber" field. ONLY if that field exists and contains a value, you may tell the user that ticket number.
+- NEVER mention a ticket number unless it is explicitly present in the tool result JSON.
+
+EXAMPLES:
+- User: "My laptop won't turn on" → Ask about device, power light, charger, recent changes. Offer troubleshooting. Only search KB if you think a guide exists for their specific symptom.
+- User: "I can't log in" → Ask which service, what error they see, when it started. Try password reset or account unlock. Only search KB if there's a known issue.
+- User: "I need help setting up email" → Search KB for setup guides if you think one exists. If not, help directly without mentioning the search.
+
+Be helpful, conversational, and focused on solving their problem. Don't over-rely on tools - use your knowledge first.`
 
 
 async function callOpenAI(payload: any): Promise<OpenAIResponse> {
@@ -217,6 +256,36 @@ async function handleToolCall(
   throw new Error(`Unsupported tool: ${toolCall.function.name}`)
 }
 
+/**
+ * Get the system message with tenant-specific rules applied
+ */
+async function getSystemMessageWithRules(tenantId?: string): Promise<string> {
+  let systemMessage = SYSTEM_MESSAGE
+
+  // If tenantId is provided, fetch and apply tenant-specific rules
+  if (tenantId) {
+    try {
+      const { getActiveAIRulesForTenant } = await import('@/lib/services/ai-rule-service')
+      const rules = await getActiveAIRulesForTenant(tenantId)
+
+      if (rules.length > 0) {
+        // Merge rules content with default system message
+        // Rules are ordered by priority (higher first), so higher priority rules come first
+        const rulesContent = rules.map((rule: { content: string }) => rule.content).join('\n\n')
+
+        // Append tenant-specific rules to the base system message
+        // This allows rules to override or extend the default behavior
+        systemMessage = `${systemMessage}\n\n---\n\n## TENANT-SPECIFIC RULES\n\nThe following rules apply to this tenant and take precedence over the default instructions:\n\n${rulesContent}`
+      }
+    } catch (error) {
+      // If fetching rules fails, log but continue with default message
+      console.error('[AI Service] Error fetching tenant AI rules:', error)
+    }
+  }
+
+  return systemMessage
+}
+
 export async function chatWithTools(params: {
   messages: ChatMessage[]
   requesterId?: string
@@ -239,9 +308,11 @@ export async function chatWithTools(params: {
   // Add system message if it's not already in the messages
   const hasSystemMessage = formattedMessages.some((m) => m.role === 'system')
   if (!hasSystemMessage) {
+    // Fetch tenant-specific rules and merge with default system message
+    const systemMessageWithRules = await getSystemMessageWithRules(params.tenantId)
     formattedMessages.unshift({
       role: 'system',
-      content: SYSTEM_MESSAGE,
+      content: systemMessageWithRules,
     })
   }
 
@@ -282,8 +353,71 @@ export async function chatWithTools(params: {
     resultCount: toolResults.length 
   })
 
-  // Step 2: Send tool results back for final answer
-  const followupMessages = [...formattedMessages, first as any, ...toolResults]
+  // Step 2: Check for failures in tool results and handle them appropriately
+  const ticketCreationResults = toolResults.filter((tr) => tr.name === 'create_ticket')
+  for (const result of ticketCreationResults) {
+    try {
+      const content = JSON.parse(result.content || '{}')
+      if (content.success === false) {
+        console.error('[AI Service] Ticket creation failed', { 
+          error: content.error,
+          toolResult: result.content 
+        })
+        // Return error immediately - don't send to followup
+        throw new Error(`Ticket creation failed: ${content.error || 'Unknown error'}`)
+      }
+      // Validate that successful ticket creation includes ticketNumber
+      if (content.success === true && !content.ticketNumber) {
+        console.error('[AI Service] Ticket creation succeeded but missing ticketNumber', { 
+          content,
+          toolResult: result.content 
+        })
+        throw new Error('Ticket creation succeeded but ticket number is missing from response')
+      }
+      console.log('[AI Service] Ticket creation validated', { 
+        ticketNumber: content.ticketNumber,
+        ticketId: content.ticketId 
+      })
+    } catch (parseError) {
+      // If JSON parsing fails, this is an error condition
+      if (parseError instanceof SyntaxError) {
+        console.error('[AI Service] Invalid JSON in ticket creation result', { 
+          content: result.content?.substring(0, 200) 
+        })
+        throw new Error('Invalid response from ticket creation tool')
+      }
+      // Re-throw other errors (like the ones we throw above)
+      throw parseError
+    }
+  }
+
+  // Step 3: Enhance tool results with explicit validation messages for ticket creation
+  const enhancedToolResults = toolResults.map((tr) => {
+    if (tr.name === 'create_ticket') {
+      try {
+        const content = JSON.parse(tr.content || '{}')
+        if (content.success === true && content.ticketNumber) {
+          // Add explicit instruction message after tool result to prevent hallucination
+          const enhancedContent = `${tr.content}\n\nIMPORTANT: The ticket was successfully created. The ticket number is: ${content.ticketNumber}. You MUST use this exact ticket number and no other when informing the user.`
+          return { ...tr, content: enhancedContent }
+        }
+      } catch (e) {
+        // If parsing fails, return as-is
+      }
+    }
+    return tr
+  })
+  
+  // Step 4: Send tool results back for final answer
+  const followupMessages = [...formattedMessages, first as any, ...enhancedToolResults]
+  
+  // Log tool results for debugging
+  console.log('[AI Service] Tool results', {
+    toolResults: toolResults.map((tr) => ({
+      name: tr.name,
+      content: tr.content?.substring(0, 200), // Preview of content
+    })),
+  })
   
   console.log('[AI Service] Sending followup request to OpenAI', { 
     messageCount: followupMessages.length 

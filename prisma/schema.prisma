@@ -79,6 +79,8 @@ model User {
   tenantAssignments      TenantAssignment[]
   chatConversations      ChatConversation[]
   auditLogs              AuditLog[]
+  aiRulesCreated         AIRule[]                @relation("AIRuleCreatedBy")
+  aiRulesUpdated         AIRule[]                @relation("AIRuleUpdatedBy")
 
   @@index([email])
   @@index([isActive])
@@ -605,6 +607,7 @@ model Tenant {
   assets       Asset[]                @relation("AssetTenant")
   kbArticles2  KnowledgeBaseArticle[] @relation("KBArticleTenant")
   organization Organization?          @relation("TenantOrganization", fields: [organizationId], references: [id], onDelete: Cascade)
+  aiRules      AIRule[]               @relation("TenantAIRules")
 
   @@index([slug])
   @@index([isActive])
@@ -694,6 +697,7 @@ model Organization {
   customAssetTypes CustomAssetType[]      @relation("CustomAssetTypeOrganization")
   emailConfig      EmailConfiguration?    @relation("OrganizationEmailConfig")
   customRoles      CustomRole[]           @relation("OrganizationCustomRoles")
+  aiRules          AIRule[]               @relation("OrganizationAIRules")
 
   @@index([slug])
   @@index([isActive])
@@ -814,5 +818,34 @@ model ChatMessage {
   conversation ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId])
+  @@index([createdAt])
+}
+
+// AI Rules Model - Tenant/Organization-specific AI behavior customization
+// Similar to Cursor rules, allows admins to customize AI assistant behavior
+model AIRule {
+  id             String   @id @default(uuid())
+  tenantId       String? // If set, rule applies to this tenant
+  organizationId String? // If set, rule applies to all tenants in this organization
+  name           String // Rule name/identifier (e.g., "system-behavior", "ticket-creation")
+  description    String? // Optional description
+  content        String   @db.Text // Rule content (markdown/text instructions)
+  priority       Int      @default(0) // Higher priority rules are applied first/override lower priority
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  createdById    String? // Who created this rule
+  updatedById    String? // Who last updated this rule
+
+  tenant       Tenant?       @relation("TenantAIRules", fields: [tenantId], references: [id], onDelete: Cascade)
+  organization Organization? @relation("OrganizationAIRules", fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?         @relation("AIRuleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy    User?         @relation("AIRuleUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  // Note: tenantId and organizationId are mutually exclusive - enforced at application level
+
+  @@index([tenantId])
+  @@index([organizationId])
+  @@index([isActive])
+  @@index([priority])
   @@index([createdAt])
 }

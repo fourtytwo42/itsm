@@ -279,43 +279,46 @@ export default function TopHeader() {
           )}
         </div>
       ) : (
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-          <button
-            onClick={() => {
-              localStorage.removeItem('accessToken')
-              localStorage.removeItem('refreshToken')
-              localStorage.removeItem('user')
-              window.location.href = '/login'
-            }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              padding: '0.5rem 1rem',
-              backgroundColor: 'var(--bg-secondary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '6px',
-              color: 'var(--text-primary)',
-              cursor: 'pointer',
-              fontSize: '0.875rem',
-              fontWeight: 500,
-              transition: 'all 0.2s',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.1)'
-              e.currentTarget.style.borderColor = 'var(--error)'
-              e.currentTarget.style.color = 'var(--error)'
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'
-              e.currentTarget.style.borderColor = 'var(--border-color)'
-              e.currentTarget.style.color = 'var(--text-primary)'
-            }}
-          >
-            <span>🚪</span>
-            <span>Logout</span>
-          </button>
-        </div>
+        // Only show logout button for END_USER role (others have it in sidebar)
+        user?.roles?.includes('END_USER') && (
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+            <button
+              onClick={() => {
+                localStorage.removeItem('accessToken')
+                localStorage.removeItem('refreshToken')
+                localStorage.removeItem('user')
+                window.location.href = '/login'
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '0.5rem 1rem',
+                backgroundColor: 'var(--bg-secondary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: 500,
+                transition: 'all 0.2s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.1)'
+                e.currentTarget.style.borderColor = 'var(--error)'
+                e.currentTarget.style.color = 'var(--error)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'
+                e.currentTarget.style.borderColor = 'var(--border-color)'
+                e.currentTarget.style.color = 'var(--text-primary)'
+              }}
+            >
+              <span>🚪</span>
+              <span>Logout</span>
+            </button>
+          </div>
+        )
       )}
     </header>
   )

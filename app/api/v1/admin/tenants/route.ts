@@ -41,8 +41,15 @@ export async function GET(request: NextRequest) {
     const tenants = await listTenants(filters)
     return NextResponse.json({ success: true, data: tenants })
   } catch (error) {
+    console.error('Error fetching tenants:', error)
     return NextResponse.json(
-      { success: false, error: { code: 'INTERNAL_ERROR', message: 'Unable to fetch tenants' } },
+      { 
+        success: false, 
+        error: { 
+          code: 'INTERNAL_ERROR', 
+          message: error instanceof Error ? error.message : 'Unable to fetch tenants' 
+        } 
+      },
       { status: 500 }
     )
   }

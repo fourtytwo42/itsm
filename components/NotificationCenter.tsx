@@ -56,6 +56,11 @@ export default function NotificationCenter() {
     const token = localStorage.getItem('accessToken')
     if (!token) return
 
+    // Don't try to connect if already connected or connecting
+    if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
+      return
+    }
+
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const wsUrl = `${protocol}//${window.location.host}/ws?token=${token}`
 
@@ -63,7 +68,7 @@ export default function NotificationCenter() {
       const ws = new WebSocket(wsUrl)
 
       ws.onopen = () => {
-        console.log('WebSocket connected')
+        console.log('[NotificationCenter] WebSocket connected')
         // Send ping to keep connection alive
         const pingInterval = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
@@ -79,25 +84,37 @@ export default function NotificationCenter() {
           const message = JSON.parse(event.data)
           handleWebSocketMessage(message)
         } catch (error) {
-          console.error('Error parsing WebSocket message:', error)
+          console.error('[NotificationCenter] Error parsing WebSocket message:', error)
         }
       }
 
       ws.onerror = (error) => {
-        console.error('WebSocket error:', error)
+        // Only log error, don't spam console - connection will close and reconnect
+        console.warn('[NotificationCenter] WebSocket connection error (will retry)')
       }
 
-      ws.onclose = () => {
-        console.log('WebSocket disconnected, reconnecting...')
-        // Reconnect after 3 seconds
+      ws.onclose = (event) => {
+        // Don't reconnect if it was a clean close (code 1000) or authentication failure (1008)
+        if (event.code === 1000 || event.code === 1008) {
+          console.log('[NotificationCenter] WebSocket closed:', event.code === 1008 ? 'Authentication failed' : 'Clean close')
+          return
+        }
+
+        // Reconnect with exponential backoff (max 30 seconds)
+        const delay = Math.min(3000 * Math.pow(2, 0), 30000) // Start with 3s, max 30s
+        console.log(`[NotificationCenter] WebSocket disconnected, reconnecting in ${delay/1000}s...`)
         reconnectTimeoutRef.current = setTimeout(() => {
           connectWebSocket()
-        }, 3000)
+        }, delay)
       }
 
       wsRef.current = ws
     } catch (error) {
-      console.error('Failed to connect WebSocket:', error)
+      console.error('[NotificationCenter] Failed to connect WebSocket:', error)
+      // Retry after 5 seconds on initial connection failure
+      reconnectTimeoutRef.current = setTimeout(() => {
+        connectWebSocket()
+      }, 5000)
     }
   }
 
